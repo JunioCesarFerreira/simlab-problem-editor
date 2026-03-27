@@ -1,0 +1,26 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: #181825;
+  color: #cdd6f4;
+}
+
+h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #89b4fa;
+  margin-bottom: 4px;
+}
+
+button {
+  font-family: inherit;
+}
