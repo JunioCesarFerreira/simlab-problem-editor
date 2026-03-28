@@ -38,6 +38,7 @@ const tools: { id: EditorTool; icon: string; label: string }[] = [
   { id: 'draw-line',         icon: '╱',  label: 'Draw Polyline  [L] — right-click/Esc to finish' },
   { id: 'draw-ellipse',      icon: '○',  label: 'Draw Ellipse  [E] — drag to define radii' },
   { id: 'measure',           icon: '📏', label: 'Tape Measure  [M] — click-drag to measure distance' },
+  { id: 'scale-calibrate',  icon: '⚖',  label: 'Scale Calibration  [R] — drag a known segment then enter its real length' },
 ]
 
 function loadImage(event: Event) {

@@ -96,6 +96,31 @@ export const useProblemStore = defineStore('problem', () => {
     if (node && node.segments.length > 0) node.segments.pop()
   }
 
+  /**
+   * Rescale all world coordinates by `factor`.
+   * Custom parametric expression segments are skipped (cannot auto-scale string expressions).
+   */
+  function rescaleAll(factor: number) {
+    if (!isFinite(factor) || factor <= 0) return
+    const d = draft.value
+    d.region = [d.region[0] * factor, d.region[1] * factor, d.region[2] * factor, d.region[3] * factor]
+    if (d.sink) { d.sink.x *= factor; d.sink.y *= factor }
+    for (const c of d.candidates) { c.x *= factor; c.y *= factor }
+    for (const node of d.mobileNodes) {
+      for (const seg of node.segments) {
+        if (seg.type === 'line') {
+          seg.start = [seg.start[0] * factor, seg.start[1] * factor]
+          seg.end   = [seg.end[0]   * factor, seg.end[1]   * factor]
+        } else if (seg.type === 'ellipse') {
+          seg.center  = [seg.center[0] * factor, seg.center[1] * factor]
+          seg.radiusX *= factor
+          seg.radiusY *= factor
+        }
+        // custom: skip — cannot auto-scale parametric string expressions
+      }
+    }
+  }
+
   return {
     draft,
     reset,
@@ -111,5 +136,6 @@ export const useProblemStore = defineStore('problem', () => {
     addSegmentToNode,
     removeSegmentFromNode,
     removeLastSegmentFromNode,
+    rescaleAll,
   }
 })

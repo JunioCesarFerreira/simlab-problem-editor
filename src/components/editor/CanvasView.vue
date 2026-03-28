@@ -16,11 +16,35 @@
       {{ fmtC(hover[0]) }}, {{ fmtC(hover[1]) }}
     </div>
     <div class="tool-hint" :class="{ warn: isToolWarn }">{{ toolHint }}</div>
+
+    <!-- Scale calibration input overlay -->
+    <div
+      v-if="scaleCalibrateState?.locked"
+      class="scale-input-overlay"
+      :style="scaleOverlayPos"
+    >
+      <div class="scale-label">Comprimento real do segmento:</div>
+      <div class="scale-dist-hint">Distância atual: {{ scaleCalibrateWorldDist.toFixed(2) }} u</div>
+      <input
+        ref="scaleInputRef"
+        v-model="scaleRealLength"
+        type="number"
+        min="0.001"
+        step="any"
+        placeholder="ex: 50.0"
+        @keydown.enter="applyScaleCalibration"
+        @keydown.escape.stop="cancelScaleCalibration"
+      />
+      <div class="scale-btns">
+        <button class="apply" @click="applyScaleCalibration">Aplicar</button>
+        <button class="cancel" @click="cancelScaleCalibration">Cancelar</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useProblemStore } from '../../stores/problemStore'
 import { useEditorStore } from '../../stores/editorStore'
 import { sampleCustomSegment } from '../../services/expressionEvaluator'
@@ -54,6 +78,57 @@ const dragState = ref<{
 
 /** Suppress the click that fires after dblclick */
 let suppressNextClick = false
+
+// ─── Scale calibration ────────────────────────────────────────────────────────
+
+const scaleCalibrateState = ref<{
+  anchor: [number, number]
+  current: [number, number]
+  locked: boolean
+} | null>(null)
+
+const scaleRealLength = ref<string>('')
+const scaleInputRef = ref<HTMLInputElement | null>(null)
+
+const scaleCalibrateWorldDist = computed(() => {
+  const ms = scaleCalibrateState.value
+  if (!ms) return 0
+  return Math.hypot(ms.current[0] - ms.anchor[0], ms.current[1] - ms.anchor[1])
+})
+
+const scaleOverlayPos = computed(() => {
+  const ms = scaleCalibrateState.value
+  if (!ms?.locked) return {}
+  const [ax, ay] = worldToCanvas(ms.anchor[0], ms.anchor[1])
+  const [bx, by] = worldToCanvas(ms.current[0], ms.current[1])
+  const mx = (ax + bx) / 2
+  const my = Math.min(ay, by) - 8  // place above the segment
+  return {
+    left: `${Math.min(Math.max((mx / canvasW.value) * 100, 5), 75)}%`,
+    top:  `${Math.max((my / canvasH.value) * 100, 2)}%`,
+  }
+})
+
+watch(() => scaleCalibrateState.value?.locked, (locked) => {
+  if (locked) nextTick(() => scaleInputRef.value?.focus())
+})
+
+function applyScaleCalibration() {
+  const ms = scaleCalibrateState.value
+  if (!ms?.locked) return
+  const realLen = parseFloat(scaleRealLength.value)
+  if (!isFinite(realLen) || realLen <= 0) return
+  const worldDist = scaleCalibrateWorldDist.value
+  if (worldDist < 0.001) return
+  problemStore.rescaleAll(realLen / worldDist)
+  scaleCalibrateState.value = null
+  scaleRealLength.value = ''
+}
+
+function cancelScaleCalibration() {
+  scaleCalibrateState.value = null
+  scaleRealLength.value = ''
+}
 
 // ─── Tape measure ─────────────────────────────────────────────────────────────
 
@@ -229,6 +304,11 @@ const toolHint = computed(() => {
     const d = measureDistance()
     return `Distância: ${d.toFixed(1)} u  ·  clique ou Esc para limpar`
   }
+  if (t === 'scale-calibrate') {
+    if (!scaleCalibrateState.value) return 'Arraste um segmento de comprimento conhecido  [R]  ·  Esc cancela'
+    if (!scaleCalibrateState.value.locked) return 'Solte para fixar o segmento  ·  Esc cancela'
+    return 'Digite o comprimento real e pressione Enter para recalibrar a escala'
+  }
   const hints: Record<string, string> = {
     'select': 'Clique para selecionar · arraste para mover · Del para remover · clique direito para remover',
     'place-sink': 'Clique para posicionar o sink  [K]',
@@ -297,6 +377,7 @@ function draw() {
   drawPolylinePreview(ctx)
   drawEllipsePreview(ctx)
   drawMeasure(ctx)
+  drawScaleCalibrate(ctx)
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
@@ -699,11 +780,91 @@ function drawMeasure(ctx: CanvasRenderingContext2D) {
   }
 }
 
+function drawScaleCalibrate(ctx: CanvasRenderingContext2D) {
+  const ms = scaleCalibrateState.value
+  const liveAnchor = ms?.anchor ?? null
+  const current = ms
+    ? (ms.locked ? ms.current : (hover.value ?? ms.current))
+    : null
+
+  if (!liveAnchor || !current) {
+    // Cursor dot when hovering with no segment yet
+    if (editorStore.activeTool === 'scale-calibrate' && hover.value) {
+      const [hx, hy] = worldToCanvas(hover.value[0], hover.value[1])
+      ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2)
+      ctx.strokeStyle = '#00bfff'; ctx.lineWidth = 1.5; ctx.stroke()
+    }
+    return
+  }
+
+  const [ax, ay] = worldToCanvas(liveAnchor[0], liveAnchor[1])
+  const [bx, by] = worldToCanvas(current[0], current[1])
+  const dist = Math.hypot(current[0] - liveAnchor[0], current[1] - liveAnchor[1])
+  const locked = ms?.locked ?? false
+  const len = Math.hypot(bx - ax, by - ay)
+
+  // Main line
+  ctx.strokeStyle = '#00bfff'
+  ctx.lineWidth = locked ? 2.5 : 1.5
+  ctx.setLineDash(locked ? [] : [6, 4])
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
+  ctx.setLineDash([])
+
+  // End ticks
+  if (len > 4) {
+    const nx = -(by - ay) / len * 10
+    const ny =  (bx - ax) / len * 10
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(ax + nx, ay + ny); ctx.lineTo(ax - nx, ay - ny); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(bx + nx, by + ny); ctx.lineTo(bx - nx, by - ny); ctx.stroke()
+  }
+
+  // Anchor dot
+  ctx.beginPath(); ctx.arc(ax, ay, 5, 0, Math.PI * 2)
+  ctx.fillStyle = '#00bfff'; ctx.fill()
+
+  // End dot
+  ctx.beginPath(); ctx.arc(bx, by, 5, 0, Math.PI * 2)
+  ctx.fillStyle = locked ? '#00bfff' : '#ffffff'
+  ctx.fill()
+
+  // Distance label (world units)
+  if (!locked) {
+    const midX = (ax + bx) / 2
+    const midY = (ay + by) / 2
+    const label = `${dist.toFixed(1)} u`
+    ctx.font = 'bold 13px monospace'
+    const tw = ctx.measureText(label).width
+    ctx.fillStyle = 'rgba(24,24,37,0.85)'
+    ctx.fillRect(midX - tw / 2 - 5, midY - 11, tw + 10, 17)
+    ctx.fillStyle = '#00bfff'
+    ctx.textAlign = 'center'
+    ctx.fillText(label, midX, midY + 4)
+  }
+
+  // When locked, draw dashed outline around the segment to invite the user to the overlay
+  if (locked && len > 4) {
+    ctx.strokeStyle = '#00bfff'
+    ctx.lineWidth = 1
+    ctx.setLineDash([3, 3])
+    ctx.globalAlpha = 0.4
+    ctx.beginPath()
+    const pad = 12
+    const nx = -(by - ay) / len * pad
+    const ny =  (bx - ax) / len * pad
+    ctx.ellipse((ax + bx) / 2, (ay + by) / 2, len / 2 + pad, pad, Math.atan2(by - ay, bx - ax), 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    ctx.setLineDash([])
+    void nx; void ny
+  }
+}
+
 // Watch and redraw
 watch(
   [() => problemStore.draft, canvasW, canvasH, hover, polylinePoints, ellipseDrag,
     () => editorStore.selected, () => editorStore.imageWorldBounds, hoveredHandle, regionDrag,
-    measureState],
+    measureState, scaleCalibrateState],
   () => draw(),
   { deep: true }
 )
@@ -757,6 +918,10 @@ function handleMouseDown(e: MouseEvent) {
     // If already locked, a new mousedown starts fresh
     measureState.value = { anchor: [wx, wy], current: [wx, wy], locked: false }
   }
+
+  if (tool === 'scale-calibrate' && !scaleCalibrateState.value?.locked) {
+    scaleCalibrateState.value = { anchor: [wx, wy], current: [wx, wy], locked: false }
+  }
 }
 
 function handleMouseMove(e: MouseEvent) {
@@ -794,6 +959,10 @@ function handleMouseMove(e: MouseEvent) {
   if (measureState.value && !measureState.value.locked) {
     measureState.value = { ...measureState.value, current: [wx, wy] }
   }
+
+  if (scaleCalibrateState.value && !scaleCalibrateState.value.locked) {
+    scaleCalibrateState.value = { ...scaleCalibrateState.value, current: [wx, wy] }
+  }
 }
 
 function handleMouseUp(e: MouseEvent) {
@@ -830,6 +999,14 @@ function handleMouseUp(e: MouseEvent) {
     const [cx2, cy2] = getCanvasPos(e)
     const [wx2, wy2] = canvasToWorld(cx2, cy2)
     measureState.value = { ...measureState.value, current: [wx2, wy2], locked: true }
+    return
+  }
+
+  // Lock scale calibration on mouse-up
+  if (scaleCalibrateState.value && !scaleCalibrateState.value.locked) {
+    const [cx2, cy2] = getCanvasPos(e)
+    const [wx2, wy2] = canvasToWorld(cx2, cy2)
+    scaleCalibrateState.value = { ...scaleCalibrateState.value, current: [wx2, wy2], locked: true }
     return
   }
 
@@ -902,6 +1079,7 @@ function handleKey(e: KeyboardEvent) {
     dragState.value = null
     regionDrag.value = null
     measureState.value = null
+    cancelScaleCalibration()
     editorStore.setSelected(null)
     e.preventDefault()
   }
@@ -915,7 +1093,7 @@ function handleKey(e: KeyboardEvent) {
 
   if (!e.ctrlKey && !e.metaKey && !isInputTarget(e)) {
     const map: Record<string, typeof editorStore.activeTool> = {
-      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure',
+      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
     }
     const t = map[e.key.toLowerCase()]
     if (t) {
@@ -923,6 +1101,7 @@ function handleKey(e: KeyboardEvent) {
       polylinePoints.value = []
       ellipseDrag.value = null
       measureState.value = null
+      cancelScaleCalibration()
     }
   }
 }
@@ -960,4 +1139,36 @@ canvas { display: block; width: 100%; height: 100%; }
   max-width: calc(100% - 160px);
 }
 .tool-hint.warn { color: #fab387; }
+
+/* Scale calibration input overlay */
+.scale-input-overlay {
+  position: absolute;
+  transform: translateX(-50%);
+  background: #1e1e2e;
+  border: 1.5px solid #00bfff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  box-shadow: 0 4px 20px rgba(0, 191, 255, 0.25);
+  z-index: 10;
+}
+.scale-label { font-size: 11px; color: #a6adc8; }
+.scale-dist-hint { font-size: 10px; color: #6c7086; font-family: monospace; }
+.scale-input-overlay input {
+  padding: 5px 7px;
+  border: 1px solid #00bfff;
+  background: #313244;
+  color: #cdd6f4;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.scale-btns { display: flex; gap: 6px; }
+.scale-btns button { flex: 1; padding: 5px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.scale-btns .apply  { background: #00bfff; color: #1e1e2e; }
+.scale-btns .cancel { background: #313244; color: #cdd6f4; border: 1px solid #45475a; }
 </style>

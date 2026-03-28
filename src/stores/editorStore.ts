@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'draw-line' | 'draw-ellipse' | 'measure'
+export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'draw-line' | 'draw-ellipse' | 'measure' | 'scale-calibrate'
 
 export type SelectedElement =
   | { type: 'sink' }
