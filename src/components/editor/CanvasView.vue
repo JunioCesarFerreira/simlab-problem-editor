@@ -16,6 +16,7 @@
       {{ fmtC(hover[0]) }}, {{ fmtC(hover[1]) }}
     </div>
     <div class="tool-hint" :class="{ warn: isToolWarn }">{{ toolHint }}</div>
+    <div v-if="calibrationToast" class="calibration-toast">{{ calibrationToast }}</div>
 
   </div>
 
@@ -100,18 +101,32 @@ watch(() => scaleCalibrateState.value?.locked, (locked) => {
   if (locked) nextTick(() => scaleInputRef.value?.focus())
 })
 
+const calibrationToast = ref<string | null>(null)
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
 function applyScaleCalibration() {
+  console.log('[apply] called, ms=', scaleCalibrateState.value)
   const ms = scaleCalibrateState.value
-  if (!ms?.locked) return
-  // Read directly from the DOM input to avoid any v-model sync edge cases
+  if (!ms?.locked) { console.warn('[apply] not locked'); return }
   const raw = scaleInputRef.value?.value ?? scaleRealLength.value
+  console.log('[apply] raw input value:', JSON.stringify(raw))
   const realLen = parseFloat(raw)
-  if (!isFinite(realLen) || realLen <= 0) return
+  if (!isFinite(realLen) || realLen <= 0) { console.warn('[apply] invalid realLen', realLen); return }
   const worldDist = scaleCalibrateWorldDist.value
-  if (worldDist < 0.001) return
-  problemStore.rescaleAll(realLen / worldDist)
+  console.log('[apply] worldDist:', worldDist)
+  if (worldDist < 0.001) { console.warn('[apply] segment too short'); return }
+  const factor = realLen / worldDist
+  console.log('[apply] applying factor', factor)
+  problemStore.rescaleAll(factor)
+  // Also rescale calibrated image world bounds if set
+  const ib = editorStore.imageWorldBounds
+  if (ib) editorStore.setImageWorldBounds([ib[0]*factor, ib[1]*factor, ib[2]*factor, ib[3]*factor])
   scaleCalibrateState.value = null
   scaleRealLength.value = ''
+  // Show confirmation toast
+  if (toastTimer) clearTimeout(toastTimer)
+  calibrationToast.value = `Escala aplicada — fator ${factor.toFixed(4)}×  |  nova região: [${problemStore.draft.region.map(v => v.toFixed(1)).join(', ')}]`
+  toastTimer = setTimeout(() => { calibrationToast.value = null }, 4000)
 }
 
 function cancelScaleCalibration() {
@@ -1128,6 +1143,15 @@ canvas { display: block; width: 100%; height: 100%; }
   max-width: calc(100% - 160px);
 }
 .tool-hint.warn { color: #fab387; }
+.calibration-toast {
+  position: absolute;
+  top: 12px; left: 50%; transform: translateX(-50%);
+  background: #00bfff; color: #1e1e2e;
+  padding: 6px 16px; border-radius: 20px;
+  font-size: 12px; font-weight: 700;
+  pointer-events: none; white-space: nowrap;
+  z-index: 20;
+}
 
 /* Scale calibration input overlay — rendered at body via <Teleport> */
 .scale-input-overlay {

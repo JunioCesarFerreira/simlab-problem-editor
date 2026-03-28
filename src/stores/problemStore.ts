@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { nanoid } from 'nanoid'
-import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment } from '../models/problem'
+import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment, Region } from '../models/problem'
 export type { ProblemDraft }
 import { saveDraft, loadDraft as loadSavedDraft } from '../services/persistence'
 
@@ -98,27 +98,31 @@ export const useProblemStore = defineStore('problem', () => {
 
   /**
    * Rescale all world coordinates by `factor`.
-   * Custom parametric expression segments are skipped (cannot auto-scale string expressions).
+   * Replaces draft.value entirely so Vue's ref setter fires reliably.
+   * Custom parametric expression segments are skipped.
    */
   function rescaleAll(factor: number) {
-    if (!isFinite(factor) || factor <= 0) return
+    console.log('[rescaleAll] called with factor', factor)
+    if (!isFinite(factor) || factor <= 0) { console.warn('[rescaleAll] invalid factor'); return }
     const d = draft.value
-    d.region = [d.region[0] * factor, d.region[1] * factor, d.region[2] * factor, d.region[3] * factor]
-    if (d.sink) { d.sink.x *= factor; d.sink.y *= factor }
-    for (const c of d.candidates) { c.x *= factor; c.y *= factor }
-    for (const node of d.mobileNodes) {
-      for (const seg of node.segments) {
-        if (seg.type === 'line') {
-          seg.start = [seg.start[0] * factor, seg.start[1] * factor]
-          seg.end   = [seg.end[0]   * factor, seg.end[1]   * factor]
-        } else if (seg.type === 'ellipse') {
-          seg.center  = [seg.center[0] * factor, seg.center[1] * factor]
-          seg.radiusX *= factor
-          seg.radiusY *= factor
-        }
-        // custom: skip — cannot auto-scale parametric string expressions
-      }
+    const f = factor
+    draft.value = {
+      ...d,
+      region: [d.region[0]*f, d.region[1]*f, d.region[2]*f, d.region[3]*f] as Region,
+      sink: d.sink ? { x: d.sink.x*f, y: d.sink.y*f } : null,
+      candidates: d.candidates.map(c => ({ ...c, x: c.x*f, y: c.y*f })),
+      mobileNodes: d.mobileNodes.map(node => ({
+        ...node,
+        segments: node.segments.map((seg): DraftSegment => {
+          if (seg.type === 'line')
+            return { type: 'line', start: [seg.start[0]*f, seg.start[1]*f], end: [seg.end[0]*f, seg.end[1]*f] }
+          if (seg.type === 'ellipse')
+            return { type: 'ellipse', center: [seg.center[0]*f, seg.center[1]*f], radiusX: seg.radiusX*f, radiusY: seg.radiusY*f }
+          return seg // custom: skip
+        }),
+      })),
     }
+    console.log('[rescaleAll] new region', draft.value.region)
   }
 
   return {
