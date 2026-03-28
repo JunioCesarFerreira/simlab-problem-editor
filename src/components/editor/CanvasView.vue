@@ -55,6 +55,49 @@ const dragState = ref<{
 /** Suppress the click that fires after dblclick */
 let suppressNextClick = false
 
+// ─── Region resize ────────────────────────────────────────────────────────────
+
+type RegionHandle = 'tl' | 't' | 'tr' | 'r' | 'br' | 'b' | 'bl' | 'l'
+
+const HANDLE_CURSORS: Record<RegionHandle, string> = {
+  tl: 'nwse-resize', tr: 'nesw-resize', bl: 'nesw-resize', br: 'nwse-resize',
+  t: 'ns-resize',   b: 'ns-resize',
+  l: 'ew-resize',   r: 'ew-resize',
+}
+
+const regionDrag = ref<{ handle: RegionHandle } | null>(null)
+const hoveredHandle = ref<RegionHandle | null>(null)
+
+/** Canvas positions of all 8 region handles */
+function getRegionHandlePositions(): Record<RegionHandle, [number, number]> {
+  const [xmin, ymin, xmax, ymax] = problemStore.draft.region
+  const xmid = (xmin + xmax) / 2
+  const ymid = (ymin + ymax) / 2
+  return {
+    tl: worldToCanvas(xmin, ymax), t: worldToCanvas(xmid, ymax), tr: worldToCanvas(xmax, ymax),
+    l:  worldToCanvas(xmin, ymid),                                 r:  worldToCanvas(xmax, ymid),
+    bl: worldToCanvas(xmin, ymin), b: worldToCanvas(xmid, ymin),  br: worldToCanvas(xmax, ymin),
+  }
+}
+
+function hitTestRegionHandle(cx: number, cy: number): RegionHandle | null {
+  const pos = getRegionHandlePositions()
+  for (const [h, [px, py]] of Object.entries(pos) as [RegionHandle, [number, number]][]) {
+    if (Math.hypot(cx - px, cy - py) <= 8) return h
+  }
+  return null
+}
+
+function applyRegionDrag(handle: RegionHandle, wx: number, wy: number) {
+  const r = [...problemStore.draft.region] as [number, number, number, number]
+  const MIN = 10 // minimum region size
+  if (handle === 'l' || handle === 'tl' || handle === 'bl') r[0] = Math.min(wx, r[2] - MIN)
+  if (handle === 'r' || handle === 'tr' || handle === 'br') r[2] = Math.max(wx, r[0] + MIN)
+  if (handle === 'b' || handle === 'bl' || handle === 'br') r[1] = Math.min(wy, r[3] - MIN)
+  if (handle === 't' || handle === 'tl' || handle === 'tr') r[3] = Math.max(wy, r[1] + MIN)
+  problemStore.updateMeta({ region: r })
+}
+
 // ─── Cached background image ──────────────────────────────────────────────────
 let bgImage: HTMLImageElement | null = null
 watch(() => editorStore.backgroundImage, (src) => {
@@ -140,6 +183,8 @@ function hitCandidate(cx: number, cy: number): string | null {
 // ─── Tool UI helpers ──────────────────────────────────────────────────────────
 
 const canvasCursor = computed(() => {
+  if (regionDrag.value) return HANDLE_CURSORS[regionDrag.value.handle]
+  if (hoveredHandle.value) return HANDLE_CURSORS[hoveredHandle.value]
   const t = editorStore.activeTool
   if (t === 'select') return dragState.value?.moved ? 'grabbing' : 'default'
   return 'crosshair'
@@ -283,11 +328,25 @@ function drawRegionBorder(ctx: CanvasRenderingContext2D) {
   const { xmin, ymin, xmax, ymax } = viewport.value
   const [px1, py1] = worldToCanvas(xmin, ymax)
   const [px2, py2] = worldToCanvas(xmax, ymin)
-  ctx.strokeStyle = '#89b4fa'
-  ctx.lineWidth = 1.5
+  const active = !!regionDrag.value || !!hoveredHandle.value
+  ctx.strokeStyle = active ? '#cdd6f4' : '#89b4fa'
+  ctx.lineWidth = active ? 2 : 1.5
   ctx.setLineDash([5, 4])
   ctx.strokeRect(px1, py1, px2 - px1, py2 - py1)
   ctx.setLineDash([])
+
+  // Draw handles
+  const pos = getRegionHandlePositions()
+  for (const [h, [hx, hy]] of Object.entries(pos) as [RegionHandle, [number, number]][]) {
+    const isActive = regionDrag.value?.handle === h || hoveredHandle.value === h
+    ctx.beginPath()
+    ctx.rect(hx - 4, hy - 4, 8, 8)
+    ctx.fillStyle = isActive ? '#cdd6f4' : '#89b4fa'
+    ctx.fill()
+    ctx.strokeStyle = '#181825'
+    ctx.lineWidth = 1
+    ctx.stroke()
+  }
 }
 
 function drawCandidates(ctx: CanvasRenderingContext2D) {
@@ -460,7 +519,7 @@ function drawEllipsePreview(ctx: CanvasRenderingContext2D) {
 // Watch and redraw
 watch(
   [() => problemStore.draft, canvasW, canvasH, hover, polylinePoints, ellipseDrag,
-    () => editorStore.selected, () => editorStore.imageWorldBounds],
+    () => editorStore.selected, () => editorStore.imageWorldBounds, hoveredHandle, regionDrag],
   () => draw(),
   { deep: true }
 )
@@ -481,6 +540,13 @@ function handleMouseDown(e: MouseEvent) {
   const [cx, cy] = getCanvasPos(e)
   const [wx, wy] = canvasToWorld(cx, cy)
   const tool = editorStore.activeTool
+
+  // Region resize — always available, regardless of active tool
+  const rh = hitTestRegionHandle(cx, cy)
+  if (rh) {
+    regionDrag.value = { handle: rh }
+    return
+  }
 
   if (tool === 'select') {
     if (hitSink(cx, cy)) {
@@ -509,6 +575,15 @@ function handleMouseMove(e: MouseEvent) {
   const [wx, wy] = canvasToWorld(cx, cy)
   hover.value = [wx, wy]
 
+  // Region drag
+  if (regionDrag.value) {
+    applyRegionDrag(regionDrag.value.handle, wx, wy)
+    return
+  }
+
+  // Update hovered handle for cursor + visual feedback
+  hoveredHandle.value = hitTestRegionHandle(cx, cy)
+
   if (dragState.value) {
     const ds = dragState.value
     const { scale } = viewport.value
@@ -530,6 +605,12 @@ function handleMouseMove(e: MouseEvent) {
 
 function handleMouseUp(e: MouseEvent) {
   if (e.button !== 0) return
+
+  // Finish region resize
+  if (regionDrag.value) {
+    regionDrag.value = null
+    return
+  }
 
   // Finish drag — do NOT add a segment
   if (dragState.value) {
@@ -618,6 +699,7 @@ function handleKey(e: KeyboardEvent) {
     polylinePoints.value = []
     ellipseDrag.value = null
     dragState.value = null
+    regionDrag.value = null
     editorStore.setSelected(null)
     e.preventDefault()
   }
