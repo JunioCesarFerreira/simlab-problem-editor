@@ -6,7 +6,6 @@ export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'draw-lin
 export type SelectedElement =
   | { type: 'sink' }
   | { type: 'candidate'; id: string }
-  | { type: 'node-segment'; nodeId: string; index: number }
 
 export const useEditorStore = defineStore('editor', () => {
   const activeTool = ref<EditorTool>('select')
@@ -15,15 +14,29 @@ export const useEditorStore = defineStore('editor', () => {
   const showJsonPreview = ref(false)
   const selected = ref<SelectedElement | null>(null)
 
+  /**
+   * Optional calibration: which world-coordinate bounding box does the image cover?
+   * [xmin, ymin, xmax, ymax] in world units.
+   * null = uncalibrated (image is fit-inside the region viewport, preserving aspect ratio).
+   */
+  const imageWorldBounds = ref<[number, number, number, number] | null>(null)
+
   function setTool(tool: EditorTool) {
     activeTool.value = tool
     selected.value = null
   }
 
-  function setBackground(dataUrl: string | null) { backgroundImage.value = dataUrl }
+  function setBackground(dataUrl: string | null) {
+    backgroundImage.value = dataUrl
+    if (!dataUrl) imageWorldBounds.value = null
+  }
+
   function setActiveNode(id: string | null) { activeNodeId.value = id }
   function toggleJsonPreview() { showJsonPreview.value = !showJsonPreview.value }
   function setSelected(el: SelectedElement | null) { selected.value = el }
+  function setImageWorldBounds(bounds: [number, number, number, number] | null) {
+    imageWorldBounds.value = bounds
+  }
 
   return {
     activeTool,
@@ -31,10 +44,12 @@ export const useEditorStore = defineStore('editor', () => {
     activeNodeId,
     showJsonPreview,
     selected,
+    imageWorldBounds,
     setTool,
     setBackground,
     setActiveNode,
     toggleJsonPreview,
     setSelected,
+    setImageWorldBounds,
   }
 })

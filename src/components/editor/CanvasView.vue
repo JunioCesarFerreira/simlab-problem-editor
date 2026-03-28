@@ -1,5 +1,5 @@
 <template>
-  <div class="canvas-wrapper" ref="wrapperRef" tabindex="0" @keydown="handleKey">
+  <div class="canvas-wrapper" ref="wrapperRef" tabindex="0" @keydown.capture="handleKey">
     <canvas
       ref="canvasRef"
       :width="canvasW"
@@ -13,9 +13,9 @@
       @mouseleave="handleMouseLeave"
     />
     <div class="coords" v-if="hover">
-      {{ fmt(hover[0]) }}, {{ fmt(hover[1]) }}
+      {{ fmtC(hover[0]) }}, {{ fmtC(hover[1]) }}
     </div>
-    <div class="tool-hint">{{ toolHint }}</div>
+    <div class="tool-hint" :class="{ warn: isToolWarn }">{{ toolHint }}</div>
   </div>
 </template>
 
@@ -34,28 +34,30 @@ const canvasW = ref(800)
 const canvasH = ref(600)
 const hover = ref<[number, number] | null>(null)
 
-// ─── Drawing interaction state ────────────────────────────────────────────────
+// ─── Interaction state ────────────────────────────────────────────────────────
 
-// Polyline: list of committed points. Each consecutive pair is a segment.
-// When tool changes away or user finishes, segments are committed.
+/** Points of the polyline being drawn (world coords) */
 const polylinePoints = ref<[number, number][]>([])
 
-// Ellipse drag state
+/** Ellipse drag: center fixed, current tracks mouse */
 const ellipseDrag = ref<{ center: [number, number]; current: [number, number] } | null>(null)
 
-// Select/drag state
+/** Drag-move state for select tool */
 const dragState = ref<{
   type: 'sink' | 'candidate'
   id?: string
-  startWorld: [number, number]
+  downCanvas: [number, number]
   originalPos: [number, number]
-  dragging: boolean
+  moved: boolean
 } | null>(null)
+
+/** Suppress the click that fires after dblclick */
+let suppressNextClick = false
 
 // ─── Cached background image ──────────────────────────────────────────────────
 let bgImage: HTMLImageElement | null = null
 watch(() => editorStore.backgroundImage, (src) => {
-  if (!src) { bgImage = null; return }
+  if (!src) { bgImage = null; draw(); return }
   const img = new Image()
   img.onload = () => { bgImage = img; draw() }
   img.src = src
@@ -71,97 +73,147 @@ onMounted(() => {
     }
   })
   if (wrapperRef.value) ro.observe(wrapperRef.value)
-  wrapperRef.value?.focus()
 })
 onUnmounted(() => ro?.disconnect())
 
-// ─── Coordinate transforms ────────────────────────────────────────────────────
+// ─── Coordinate transform — uniform scale, preserves world aspect ratio ───────
 const region = computed<Region>(() => problemStore.draft.region)
-const MARGIN = 40
+const MARGIN = 48
+
+/**
+ * Returns the viewport parameters derived from the current canvas size and region.
+ * Uses the SAME scale for both axes so the world coordinate system is not deformed.
+ */
+const viewport = computed(() => {
+  const [xmin, ymin, xmax, ymax] = region.value
+  const worldW = xmax - xmin
+  const worldH = ymax - ymin
+  const availW = canvasW.value - MARGIN * 2
+  const availH = canvasH.value - MARGIN * 2
+  const scale = Math.min(availW / worldW, availH / worldH)
+  // Center the region viewport in the available area
+  const vw = worldW * scale
+  const vh = worldH * scale
+  const offX = MARGIN + (availW - vw) / 2
+  const offY = MARGIN + (availH - vh) / 2
+  return { xmin, ymin, xmax, ymax, scale, offX, offY, vw, vh }
+})
 
 function worldToCanvas(wx: number, wy: number): [number, number] {
-  const [xmin, ymin, xmax, ymax] = region.value
-  const pw = canvasW.value - MARGIN * 2
-  const ph = canvasH.value - MARGIN * 2
+  const { xmin, ymax, scale, offX, offY } = viewport.value
   return [
-    MARGIN + ((wx - xmin) / (xmax - xmin)) * pw,
-    MARGIN + ((ymax - wy) / (ymax - ymin)) * ph,
+    offX + (wx - xmin) * scale,
+    offY + (ymax - wy) * scale,
   ]
 }
 
 function canvasToWorld(cx: number, cy: number): [number, number] {
-  const [xmin, ymin, xmax, ymax] = region.value
-  const pw = canvasW.value - MARGIN * 2
-  const ph = canvasH.value - MARGIN * 2
+  const { xmin, ymax, scale, offX, offY } = viewport.value
   return [
-    xmin + ((cx - MARGIN) / pw) * (xmax - xmin),
-    ymax - ((cy - MARGIN) / ph) * (ymax - ymin),
+    xmin + (cx - offX) / scale,
+    ymax - (cy - offY) / scale,
   ]
 }
 
-function fmt(v: number) { return v.toFixed(1) }
+function fmtC(v: number) { return v.toFixed(1) }
 function snap(v: number) { return Math.round(v) }
 
 // ─── Hit testing ──────────────────────────────────────────────────────────────
+const HIT_PX = 10
 
-const HIT_RADIUS = 10 // pixels
-
-function hitTestSink(cx: number, cy: number): boolean {
+function hitSink(cx: number, cy: number): boolean {
   const sink = problemStore.draft.sink
   if (!sink) return false
   const [px, py] = worldToCanvas(sink.x, sink.y)
-  return Math.hypot(cx - px, cy - py) <= HIT_RADIUS
+  return Math.hypot(cx - px, cy - py) <= HIT_PX
 }
 
-function hitTestCandidate(cx: number, cy: number): string | null {
+function hitCandidate(cx: number, cy: number): string | null {
   for (const c of problemStore.draft.candidates) {
     const [px, py] = worldToCanvas(c.x, c.y)
-    if (Math.hypot(cx - px, cy - py) <= HIT_RADIUS) return c.id
+    if (Math.hypot(cx - px, cy - py) <= HIT_PX) return c.id
   }
   return null
 }
 
-// ─── Tool state ───────────────────────────────────────────────────────────────
+// ─── Tool UI helpers ──────────────────────────────────────────────────────────
 
 const canvasCursor = computed(() => {
-  const tool = editorStore.activeTool
-  if (tool === 'select') return dragState.value?.dragging ? 'grabbing' : 'default'
+  const t = editorStore.activeTool
+  if (t === 'select') return dragState.value?.moved ? 'grabbing' : 'default'
   return 'crosshair'
 })
 
+const isToolWarn = computed(() =>
+  ['draw-line', 'draw-ellipse'].includes(editorStore.activeTool) && !editorStore.activeNodeId
+)
+
 const toolHint = computed(() => {
-  const tool = editorStore.activeTool
-  if (tool === 'draw-line') {
-    if (!editorStore.activeNodeId) return 'Select a mobile node first'
-    if (polylinePoints.value.length === 0) return 'Click to start polyline — right-click or Esc to finish'
-    return `${polylinePoints.value.length} point(s) — click to continue, right-click or double-click to finish`
+  const t = editorStore.activeTool
+  if (t === 'draw-line') {
+    if (!editorStore.activeNodeId) return '⚠ Selecione um nó móvel na aba Nodes antes de desenhar'
+    const n = polylinePoints.value.length
+    return n === 0
+      ? 'Clique para iniciar polilinha  ·  Esc cancela'
+      : `${n} ponto(s)  ·  clique para continuar  ·  duplo-clique ou clique direito para finalizar`
   }
-  if (tool === 'draw-ellipse') {
-    if (!editorStore.activeNodeId) return 'Select a mobile node first'
-    return ellipseDrag.value ? 'Release to commit ellipse' : 'Drag to define ellipse'
+  if (t === 'draw-ellipse') {
+    if (!editorStore.activeNodeId) return '⚠ Selecione um nó móvel na aba Nodes antes de desenhar'
+    return ellipseDrag.value
+      ? 'Solte para confirmar a elipse'
+      : 'Arraste para definir centro e raios da elipse'
   }
   const hints: Record<string, string> = {
-    'select': 'Click to select, drag to move elements',
-    'place-sink': 'Click to place the sink',
-    'place-candidate': 'Click to add a candidate — right-click to remove',
+    'select': 'Clique para selecionar · arraste para mover · Del para remover · clique direito para remover',
+    'place-sink': 'Clique para posicionar o sink  [K]',
+    'place-candidate': 'Clique para adicionar candidato  [C]  ·  clique direito para remover',
   }
-  return hints[tool] ?? ''
+  return hints[t] ?? ''
 })
 
-// ─── Draw ─────────────────────────────────────────────────────────────────────
+// ─── Drawing ──────────────────────────────────────────────────────────────────
 
 function draw() {
   const canvas = canvasRef.value
   if (!canvas) return
   const ctx = canvas.getContext('2d')!
+  const { vw, vh, offX, offY } = viewport.value
+
   ctx.clearRect(0, 0, canvasW.value, canvasH.value)
 
+  // ── Background image ───────────────────────────────────────────────────────
   if (bgImage) {
-    const [px1, py1] = worldToCanvas(region.value[0], region.value[3])
-    const [px2, py2] = worldToCanvas(region.value[2], region.value[1])
-    ctx.globalAlpha = 0.6
-    ctx.drawImage(bgImage, px1, py1, px2 - px1, py2 - py1)
-    ctx.globalAlpha = 1
+    const calBounds = editorStore.imageWorldBounds
+    let imgX: number, imgY: number, imgW: number, imgH: number
+
+    if (calBounds) {
+      // Calibrated: image covers these world bounds
+      const [ix1, iy1] = worldToCanvas(calBounds[0], calBounds[3]) // top-left
+      const [ix2, iy2] = worldToCanvas(calBounds[2], calBounds[1]) // bottom-right
+      imgX = ix1; imgY = iy1; imgW = ix2 - ix1; imgH = iy2 - iy1
+    } else {
+      // No calibration: fit image inside viewport preserving its aspect ratio
+      const imgAspect = bgImage.naturalWidth / bgImage.naturalHeight
+      const vpAspect = vw / vh
+      if (imgAspect > vpAspect) {
+        // Image is wider → fit width, letterbox top/bottom
+        imgW = vw
+        imgH = vw / imgAspect
+        imgX = offX
+        imgY = offY + (vh - imgH) / 2
+      } else {
+        // Image is taller → fit height, pillarbox sides
+        imgH = vh
+        imgW = vh * imgAspect
+        imgX = offX + (vw - imgW) / 2
+        imgY = offY
+      }
+    }
+
+    ctx.save()
+    ctx.globalAlpha = 0.55
+    ctx.drawImage(bgImage, imgX, imgY, imgW, imgH)
+    ctx.restore()
   }
 
   drawGrid(ctx)
@@ -174,42 +226,65 @@ function draw() {
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
-  const [xmin, ymin, xmax, ymax] = region.value
+  const { xmin, ymin, xmax, ymax, scale } = viewport.value
+
+  // Choose grid step so we get ~5–10 lines
   const span = xmax - xmin
-  const step = Math.pow(10, Math.floor(Math.log10(span / 5)))
+  const rawStep = span / 8
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)))
+  const step = [1, 2, 5, 10].map(f => f * mag).find(s => span / s <= 10) ?? mag * 10
+
   ctx.strokeStyle = '#2a2a3e'
   ctx.lineWidth = 0.5
+  ctx.fillStyle = '#6c7086'
+  ctx.font = `${Math.max(9, Math.min(11, scale * 8))}px monospace`
+  ctx.textAlign = 'center'
+
   for (let x = Math.ceil(xmin / step) * step; x <= xmax + 1e-9; x += step) {
     const [px] = worldToCanvas(x, 0)
-    const [, py1] = worldToCanvas(0, ymin); const [, py2] = worldToCanvas(0, ymax)
+    const [, py1] = worldToCanvas(0, ymin)
+    const [, py2] = worldToCanvas(0, ymax)
     ctx.beginPath(); ctx.moveTo(px, py1); ctx.lineTo(px, py2); ctx.stroke()
+    // x-axis label
+    const [, labelY] = worldToCanvas(0, ymin)
+    ctx.fillText(String(Math.round(x)), px, labelY + 13)
   }
+
+  ctx.textAlign = 'right'
   for (let y = Math.ceil(ymin / step) * step; y <= ymax + 1e-9; y += step) {
     const [, py] = worldToCanvas(0, y)
-    const [px1] = worldToCanvas(xmin, 0); const [px2] = worldToCanvas(xmax, 0)
+    const [px1] = worldToCanvas(xmin, 0)
+    const [px2] = worldToCanvas(xmax, 0)
     ctx.beginPath(); ctx.moveTo(px1, py); ctx.lineTo(px2, py); ctx.stroke()
+    // y-axis label
+    const [labelX] = worldToCanvas(xmin, 0)
+    ctx.fillText(String(Math.round(y)), labelX - 4, py + 3)
   }
+
+  // Axes
   ctx.strokeStyle = '#45475a'
   ctx.lineWidth = 1
-  if (0 >= xmin && 0 <= xmax) {
+  if (xmin <= 0 && 0 <= xmax) {
     const [px] = worldToCanvas(0, 0)
-    const [, py1] = worldToCanvas(0, ymin); const [, py2] = worldToCanvas(0, ymax)
+    const [, py1] = worldToCanvas(0, ymin)
+    const [, py2] = worldToCanvas(0, ymax)
     ctx.beginPath(); ctx.moveTo(px, py1); ctx.lineTo(px, py2); ctx.stroke()
   }
-  if (0 >= ymin && 0 <= ymax) {
+  if (ymin <= 0 && 0 <= ymax) {
     const [, py] = worldToCanvas(0, 0)
-    const [px1] = worldToCanvas(xmin, 0); const [px2] = worldToCanvas(xmax, 0)
+    const [px1] = worldToCanvas(xmin, 0)
+    const [px2] = worldToCanvas(xmax, 0)
     ctx.beginPath(); ctx.moveTo(px1, py); ctx.lineTo(px2, py); ctx.stroke()
   }
 }
 
 function drawRegionBorder(ctx: CanvasRenderingContext2D) {
-  const [xmin, ymin, xmax, ymax] = region.value
+  const { xmin, ymin, xmax, ymax } = viewport.value
   const [px1, py1] = worldToCanvas(xmin, ymax)
   const [px2, py2] = worldToCanvas(xmax, ymin)
   ctx.strokeStyle = '#89b4fa'
   ctx.lineWidth = 1.5
-  ctx.setLineDash([4, 3])
+  ctx.setLineDash([5, 4])
   ctx.strokeRect(px1, py1, px2 - px1, py2 - py1)
   ctx.setLineDash([])
 }
@@ -218,13 +293,13 @@ function drawCandidates(ctx: CanvasRenderingContext2D) {
   const sel = editorStore.selected
   for (const c of problemStore.draft.candidates) {
     const [px, py] = worldToCanvas(c.x, c.y)
-    const isSelected = sel?.type === 'candidate' && sel.id === c.id
+    const selected = sel?.type === 'candidate' && sel.id === c.id
     ctx.beginPath()
-    ctx.arc(px, py, isSelected ? 7 : 5, 0, Math.PI * 2)
+    ctx.arc(px, py, selected ? 7 : 5, 0, Math.PI * 2)
     ctx.fillStyle = '#a6e3a1'
     ctx.fill()
-    ctx.strokeStyle = isSelected ? '#f9e2af' : '#1e1e2e'
-    ctx.lineWidth = isSelected ? 2 : 1
+    ctx.strokeStyle = selected ? '#f9e2af' : '#1e1e2e'
+    ctx.lineWidth = selected ? 2.5 : 1
     ctx.stroke()
   }
 }
@@ -233,10 +308,10 @@ function drawSink(ctx: CanvasRenderingContext2D) {
   const sink = problemStore.draft.sink
   if (!sink) return
   const [px, py] = worldToCanvas(sink.x, sink.y)
-  const isSelected = editorStore.selected?.type === 'sink'
-  ctx.strokeStyle = isSelected ? '#f9e2af' : '#f38ba8'
-  ctx.lineWidth = isSelected ? 3 : 2.5
-  const r = isSelected ? 11 : 9
+  const selected = editorStore.selected?.type === 'sink'
+  const r = selected ? 11 : 9
+  ctx.strokeStyle = selected ? '#f9e2af' : '#f38ba8'
+  ctx.lineWidth = selected ? 3 : 2.5
   ctx.beginPath(); ctx.moveTo(px - r, py); ctx.lineTo(px + r, py); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(px, py - r); ctx.lineTo(px, py + r); ctx.stroke()
   ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.stroke()
@@ -264,12 +339,12 @@ function drawMobileRoutes(ctx: CanvasRenderingContext2D) {
         ctx.beginPath()
         ctx.ellipse(cpx, cpy, Math.abs(ex - cpx), Math.abs(ey - cpy), 0, 0, Math.PI * 2)
         ctx.stroke()
-        // center dot
         ctx.beginPath(); ctx.arc(cpx, cpy, 3, 0, Math.PI * 2)
         ctx.fillStyle = color; ctx.fill()
       }
     }
 
+    // Node label at first segment start
     if (node.segments.length > 0) {
       const s = node.segments[0]
       const lx = s.type === 'line' ? s.start[0] : s.type === 'ellipse' ? s.center[0] : 0
@@ -277,16 +352,15 @@ function drawMobileRoutes(ctx: CanvasRenderingContext2D) {
       const [lpx, lpy] = worldToCanvas(lx, ly)
       ctx.fillStyle = color
       ctx.font = 'bold 11px monospace'
+      ctx.textAlign = 'left'
       ctx.fillText(node.name, lpx + 8, lpy - 8)
     }
   })
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string) {
-  const dx = x2 - x1, dy = y2 - y1
-  const len = Math.hypot(dx, dy)
-  if (len < 20) return
-  const angle = Math.atan2(dy, dx)
+  if (Math.hypot(x2 - x1, y2 - y1) < 20) return
+  const angle = Math.atan2(y2 - y1, x2 - x1)
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
   const s = 7
   ctx.fillStyle = color
@@ -294,30 +368,33 @@ function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: nu
   ctx.moveTo(mx + Math.cos(angle) * s, my + Math.sin(angle) * s)
   ctx.lineTo(mx + Math.cos(angle + 2.5) * s * 0.5, my + Math.sin(angle + 2.5) * s * 0.5)
   ctx.lineTo(mx + Math.cos(angle - 2.5) * s * 0.5, my + Math.sin(angle - 2.5) * s * 0.5)
-  ctx.closePath()
-  ctx.fill()
+  ctx.closePath(); ctx.fill()
 }
 
 function drawPolylinePreview(ctx: CanvasRenderingContext2D) {
   const pts = polylinePoints.value
   if (pts.length === 0) return
-  // Draw committed points and segments of current polyline
+
   ctx.strokeStyle = '#89b4fa'
   ctx.lineWidth = 1.5
+
+  // Committed segments so far
   for (let i = 0; i < pts.length - 1; i++) {
-    const [px1, py1] = worldToCanvas(pts[i][0], pts[i][1])
-    const [px2, py2] = worldToCanvas(pts[i + 1][0], pts[i + 1][1])
-    ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke()
+    const [x1, y1] = worldToCanvas(pts[i][0], pts[i][1])
+    const [x2, y2] = worldToCanvas(pts[i + 1][0], pts[i + 1][1])
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
   }
-  // Ghost line from last point to hover
+
+  // Ghost to mouse
   if (hover.value) {
-    const [px1, py1] = worldToCanvas(pts[pts.length - 1][0], pts[pts.length - 1][1])
-    const [px2, py2] = worldToCanvas(hover.value[0], hover.value[1])
+    const [x1, y1] = worldToCanvas(pts[pts.length - 1][0], pts[pts.length - 1][1])
+    const [x2, y2] = worldToCanvas(hover.value[0], hover.value[1])
     ctx.setLineDash([5, 4])
-    ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
     ctx.setLineDash([])
   }
-  // Draw all points as dots
+
+  // Dots on each committed point
   for (const pt of pts) {
     const [px, py] = worldToCanvas(pt[0], pt[1])
     ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2)
@@ -329,68 +406,77 @@ function drawEllipsePreview(ctx: CanvasRenderingContext2D) {
   const drag = ellipseDrag.value
   if (!drag) return
   const [cpx, cpy] = worldToCanvas(drag.center[0], drag.center[1])
-  const [cur] = worldToCanvas(drag.current[0], drag.current[1])
-  const [, cury] = worldToCanvas(drag.center[0], drag.current[1])
-  const rx = Math.abs(cur - cpx)
-  const ry = Math.abs(cury - cpy)
+  const [ex] = worldToCanvas(drag.current[0], drag.center[1])
+  const [, ey] = worldToCanvas(drag.center[0], drag.current[1])
+  const rx = Math.abs(ex - cpx)
+  const ry = Math.abs(ey - cpy)
   ctx.strokeStyle = '#89b4fa'
   ctx.lineWidth = 1.5
-  ctx.setLineDash([4, 3])
-  if (rx > 0 && ry > 0) {
+  if (rx > 1 && ry > 1) {
+    ctx.setLineDash([4, 3])
     ctx.beginPath()
     ctx.ellipse(cpx, cpy, rx, ry, 0, 0, Math.PI * 2)
     ctx.stroke()
+    ctx.setLineDash([])
+    // radii lines
+    ctx.strokeStyle = '#45475a'
+    ctx.lineWidth = 0.5
+    ctx.beginPath(); ctx.moveTo(cpx, cpy); ctx.lineTo(ex, cpy); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(cpx, cpy); ctx.lineTo(cpx, ey); ctx.stroke()
+    // labels
+    const wx = Math.abs(drag.current[0] - drag.center[0])
+    const wy = Math.abs(drag.current[1] - drag.center[1])
+    ctx.fillStyle = '#a6adc8'
+    ctx.font = '10px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText(`rx=${Math.round(wx)}`, (cpx + ex) / 2, cpy - 5)
+    ctx.textAlign = 'left'
+    ctx.fillText(`ry=${Math.round(wy)}`, cpx + 4, (cpy + ey) / 2)
   }
-  ctx.setLineDash([])
-  // Center dot
   ctx.beginPath(); ctx.arc(cpx, cpy, 3, 0, Math.PI * 2)
   ctx.fillStyle = '#89b4fa'; ctx.fill()
-  // Bounding box
-  ctx.strokeStyle = '#45475a'
-  ctx.lineWidth = 0.5
-  ctx.strokeRect(cpx - rx, cpy - ry, rx * 2, ry * 2)
 }
 
-// Watch state changes
+// Watch and redraw
 watch(
   [() => problemStore.draft, canvasW, canvasH, hover, polylinePoints, ellipseDrag,
-    () => editorStore.selected],
+    () => editorStore.selected, () => editorStore.imageWorldBounds],
   () => draw(),
   { deep: true }
 )
 
-// ─── Interaction ──────────────────────────────────────────────────────────────
+// ─── Event handlers ───────────────────────────────────────────────────────────
 
 function getCanvasPos(e: MouseEvent): [number, number] {
   const rect = canvasRef.value!.getBoundingClientRect()
-  const scaleX = canvasW.value / rect.width
-  const scaleY = canvasH.value / rect.height
-  return [(e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY]
+  return [
+    (e.clientX - rect.left) * (canvasW.value / rect.width),
+    (e.clientY - rect.top) * (canvasH.value / rect.height),
+  ]
 }
 
 function handleMouseDown(e: MouseEvent) {
   if (e.button !== 0) return
+  wrapperRef.value?.focus()
   const [cx, cy] = getCanvasPos(e)
   const [wx, wy] = canvasToWorld(cx, cy)
   const tool = editorStore.activeTool
 
   if (tool === 'select') {
-    // Check sink
-    if (hitTestSink(cx, cy)) {
-      const sink = problemStore.draft.sink!
+    if (hitSink(cx, cy)) {
       editorStore.setSelected({ type: 'sink' })
-      dragState.value = { type: 'sink', startWorld: [wx, wy], originalPos: [sink.x, sink.y], dragging: false }
+      dragState.value = { type: 'sink', downCanvas: [cx, cy], originalPos: [problemStore.draft.sink!.x, problemStore.draft.sink!.y], moved: false }
       return
     }
-    // Check candidate
-    const cid = hitTestCandidate(cx, cy)
+    const cid = hitCandidate(cx, cy)
     if (cid) {
       const c = problemStore.draft.candidates.find(c => c.id === cid)!
       editorStore.setSelected({ type: 'candidate', id: cid })
-      dragState.value = { type: 'candidate', id: cid, startWorld: [wx, wy], originalPos: [c.x, c.y], dragging: false }
+      dragState.value = { type: 'candidate', id: cid, downCanvas: [cx, cy], originalPos: [c.x, c.y], moved: false }
       return
     }
     editorStore.setSelected(null)
+    dragState.value = null
   }
 
   if (tool === 'draw-ellipse' && editorStore.activeNodeId) {
@@ -403,24 +489,20 @@ function handleMouseMove(e: MouseEvent) {
   const [wx, wy] = canvasToWorld(cx, cy)
   hover.value = [wx, wy]
 
-  // Drag elements
   if (dragState.value) {
     const ds = dragState.value
-    const dx = wx - ds.startWorld[0]
-    const dy = wy - ds.startWorld[1]
-    if (!ds.dragging && Math.abs(dx) + Math.abs(dy) > 2) ds.dragging = true
-    if (ds.dragging) {
+    const { scale } = viewport.value
+    const dx = (cx - ds.downCanvas[0]) / scale
+    const dy = -(cy - ds.downCanvas[1]) / scale  // flip Y
+    if (!ds.moved && Math.hypot(dx, dy) > 2) ds.moved = true
+    if (ds.moved) {
       const nx = snap(ds.originalPos[0] + dx)
       const ny = snap(ds.originalPos[1] + dy)
-      if (ds.type === 'sink') {
-        problemStore.setSink({ x: nx, y: ny })
-      } else if (ds.type === 'candidate' && ds.id) {
-        problemStore.moveCandidate(ds.id, nx, ny)
-      }
+      if (ds.type === 'sink') problemStore.setSink({ x: nx, y: ny })
+      else if (ds.type === 'candidate' && ds.id) problemStore.moveCandidate(ds.id, nx, ny)
     }
   }
 
-  // Ellipse drag
   if (ellipseDrag.value) {
     ellipseDrag.value = { ...ellipseDrag.value, current: [wx, wy] }
   }
@@ -428,61 +510,60 @@ function handleMouseMove(e: MouseEvent) {
 
 function handleMouseUp(e: MouseEvent) {
   if (e.button !== 0) return
-  const [cx, cy] = getCanvasPos(e) // cx unused for non-select tools but kept for consistency
-  const [wx, wy] = canvasToWorld(cx, cy)
-  const tool = editorStore.activeTool
 
-  // Finish drag
+  // Finish drag — do NOT add a segment
   if (dragState.value) {
     dragState.value = null
     return
   }
 
-  // Commit ellipse
-  if (tool === 'draw-ellipse' && ellipseDrag.value) {
+  // Finish ellipse drag
+  if (ellipseDrag.value && editorStore.activeTool === 'draw-ellipse') {
     const { center, current } = ellipseDrag.value
-    const rxWorld = Math.abs(current[0] - center[0])
-    const ryWorld = Math.abs(current[1] - center[1])
-    if (rxWorld > 1 && ryWorld > 1 && editorStore.activeNodeId) {
+    const rxW = Math.abs(snap(current[0]) - center[0])
+    const ryW = Math.abs(snap(current[1]) - center[1])
+    if (rxW > 1 && ryW > 1 && editorStore.activeNodeId) {
       problemStore.addSegmentToNode(editorStore.activeNodeId, {
-        type: 'ellipse',
-        center,
-        radiusX: snap(rxWorld),
-        radiusY: snap(ryWorld),
+        type: 'ellipse', center, radiusX: rxW, radiusY: ryW,
       })
     }
     ellipseDrag.value = null
     return
   }
 
-  // Polyline: add point
-  if (tool === 'draw-line' && editorStore.activeNodeId) {
-    const pt: [number, number] = [snap(wx), snap(wy)]
-    polylinePoints.value = [...polylinePoints.value, pt]
-    // If we now have ≥2 points, commit each new segment
-    const pts = polylinePoints.value
-    if (pts.length >= 2) {
-      problemStore.addSegmentToNode(editorStore.activeNodeId, {
-        type: 'line',
-        start: pts[pts.length - 2],
-        end: pts[pts.length - 1],
-      })
-    }
-    return
-  }
+  // Single-click placement tools
+  if (suppressNextClick) { suppressNextClick = false; return }
+  const [cx, cy] = getCanvasPos(e)
+  const [wx, wy] = canvasToWorld(cx, cy)
+  const tool = editorStore.activeTool
 
-  // Single-click tools
   if (tool === 'place-sink') {
     problemStore.setSink({ x: snap(wx), y: snap(wy) })
   } else if (tool === 'place-candidate') {
     problemStore.addCandidate(snap(wx), snap(wy))
+  } else if (tool === 'draw-line' && editorStore.activeNodeId) {
+    const pt: [number, number] = [snap(wx), snap(wy)]
+    const prev = polylinePoints.value
+    if (prev.length > 0) {
+      // Commit segment from last point to this one
+      problemStore.addSegmentToNode(editorStore.activeNodeId, {
+        type: 'line',
+        start: prev[prev.length - 1],
+        end: pt,
+      })
+    }
+    polylinePoints.value = [...prev, pt]
   }
 }
 
 function handleDblClick(_e: MouseEvent) {
-  // Finish polyline on double-click
   if (editorStore.activeTool === 'draw-line' && polylinePoints.value.length > 0) {
-    finishPolyline()
+    // Remove the extra segment added by the second click of the double-click
+    if (editorStore.activeNodeId) {
+      problemStore.removeLastSegmentFromNode(editorStore.activeNodeId)
+    }
+    polylinePoints.value = []
+    suppressNextClick = true
   }
 }
 
@@ -490,24 +571,21 @@ function handleRightClick(e: MouseEvent) {
   const [cx, cy] = getCanvasPos(e)
   const tool = editorStore.activeTool
 
-  // Finish polyline
-  if (tool === 'draw-line') {
-    finishPolyline()
+  if (tool === 'draw-line' && polylinePoints.value.length > 0) {
+    polylinePoints.value = []
     return
   }
 
-  // Remove candidate under cursor
-  if (tool === 'place-candidate' || tool === 'select') {
-    const cid = hitTestCandidate(cx, cy)
-    if (cid) {
-      problemStore.removeCandidate(cid)
-      editorStore.setSelected(null)
-      return
-    }
-    if (hitTestSink(cx, cy)) {
-      problemStore.setSink(null)
-      editorStore.setSelected(null)
-    }
+  // Remove element under cursor
+  const cid = hitCandidate(cx, cy)
+  if (cid) {
+    problemStore.removeCandidate(cid)
+    editorStore.setSelected(null)
+    return
+  }
+  if (hitSink(cx, cy)) {
+    problemStore.setSink(null)
+    editorStore.setSelected(null)
   }
 }
 
@@ -517,54 +595,36 @@ function handleMouseLeave() {
 
 function handleKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
-    if (polylinePoints.value.length > 0) {
-      polylinePoints.value = []
-    }
+    polylinePoints.value = []
     ellipseDrag.value = null
     dragState.value = null
     editorStore.setSelected(null)
-  }
-
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    const sel = editorStore.selected
-    if (!sel) return
-    if (sel.type === 'sink') {
-      problemStore.setSink(null)
-      editorStore.setSelected(null)
-    } else if (sel.type === 'candidate') {
-      problemStore.removeCandidate(sel.id)
-      editorStore.setSelected(null)
-    }
     e.preventDefault()
   }
 
-  // Shortcut keys
-  const keyTools: Record<string, typeof editorStore.activeTool> = {
-    's': 'select',
-    'k': 'place-sink',
-    'c': 'place-candidate',
-    'l': 'draw-line',
-    'e': 'draw-ellipse',
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputTarget(e)) {
+    const sel = editorStore.selected
+    if (sel?.type === 'sink') { problemStore.setSink(null); editorStore.setSelected(null) }
+    else if (sel?.type === 'candidate') { problemStore.removeCandidate(sel.id); editorStore.setSelected(null) }
+    e.preventDefault()
   }
-  if (keyTools[e.key.toLowerCase()] && !e.ctrlKey && !e.metaKey) {
-    editorStore.setTool(keyTools[e.key.toLowerCase()])
-    polylinePoints.value = []
-    ellipseDrag.value = null
+
+  if (!e.ctrlKey && !e.metaKey && !isInputTarget(e)) {
+    const map: Record<string, typeof editorStore.activeTool> = {
+      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 'l': 'draw-line', 'e': 'draw-ellipse',
+    }
+    const t = map[e.key.toLowerCase()]
+    if (t) {
+      editorStore.setTool(t)
+      polylinePoints.value = []
+      ellipseDrag.value = null
+    }
   }
 }
 
-function finishPolyline() {
-  // Remove last duplicated point from dblclick
-  if (polylinePoints.value.length > 1) {
-    const pts = polylinePoints.value
-    const last = pts[pts.length - 1]
-    const prev = pts[pts.length - 2]
-    if (last[0] === prev[0] && last[1] === prev[1]) {
-      // Remove duplicate caused by rapid click
-      problemStore.removeLastSegmentFromNode(editorStore.activeNodeId!)
-    }
-  }
-  polylinePoints.value = []
+function isInputTarget(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement)?.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
 </script>
 
@@ -579,25 +639,20 @@ function finishPolyline() {
 canvas { display: block; width: 100%; height: 100%; }
 .coords {
   position: absolute;
-  bottom: 8px;
-  right: 12px;
-  font-size: 11px;
-  color: #a6adc8;
+  bottom: 8px; right: 12px;
+  font-size: 11px; color: #a6adc8;
   background: #1e1e2e99;
-  padding: 2px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-  font-family: monospace;
+  padding: 2px 8px; border-radius: 4px;
+  pointer-events: none; font-family: monospace;
 }
 .tool-hint {
   position: absolute;
-  bottom: 8px;
-  left: 12px;
-  font-size: 11px;
-  color: #6c7086;
+  bottom: 8px; left: 12px;
+  font-size: 11px; color: #6c7086;
   background: #1e1e2e99;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 2px 8px; border-radius: 4px;
   pointer-events: none;
+  max-width: calc(100% - 160px);
 }
+.tool-hint.warn { color: #fab387; }
 </style>

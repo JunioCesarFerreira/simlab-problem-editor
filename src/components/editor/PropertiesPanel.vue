@@ -5,7 +5,10 @@
       <button :class="{ active: tab === 'nodes' }" @click="tab = 'nodes'">Nodes</button>
     </div>
     <div class="tab-content">
-      <ProblemForm v-if="tab === 'problem'" />
+      <template v-if="tab === 'problem'">
+        <ProblemForm />
+        <CalibrationPanel />
+      </template>
       <template v-else>
         <MobileNodeList />
         <div class="divider" />
@@ -18,6 +21,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import ProblemForm from '../problem/ProblemForm.vue'
+import CalibrationPanel from './CalibrationPanel.vue'
 import MobileNodeList from '../problem/MobileNodeList.vue'
 import MobileNodeEditor from '../problem/MobileNodeEditor.vue'
 
