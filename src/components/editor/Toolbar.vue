@@ -16,13 +16,16 @@
       </label>
     </div>
     <div class="spacer" />
-    <button :class="{ active: showJson }" title="JSON Preview" @click="editorStore.toggleJsonPreview()">{ }</button>
+    <button title="Import JSON" @click="$emit('import')">⬆</button>
+    <button :class="{ active: showJson }" title="JSON Preview  [{ }]" @click="editorStore.toggleJsonPreview()">{ }</button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useEditorStore, type EditorTool } from '../../stores/editorStore'
+
+defineEmits<{ import: [] }>()
 
 const editorStore = useEditorStore()
 const activeTool = computed(() => editorStore.activeTool)

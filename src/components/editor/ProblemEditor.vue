@@ -1,12 +1,13 @@
 <template>
   <div class="problem-editor">
-    <Toolbar />
+    <Toolbar @import="showImport = true" />
     <div class="editor-body">
       <aside class="side-panel">
         <PropertiesPanel />
       </aside>
-      <main class="canvas-area">
+      <main class="canvas-area" style="position:relative">
         <CanvasView />
+        <ImportPanel v-if="showImport" @close="showImport = false" />
       </main>
       <aside v-if="showJson" class="json-panel">
         <JsonPreviewPanel />
@@ -16,15 +17,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import Toolbar from './Toolbar.vue'
 import PropertiesPanel from './PropertiesPanel.vue'
 import CanvasView from './CanvasView.vue'
 import JsonPreviewPanel from './JsonPreviewPanel.vue'
+import ImportPanel from './ImportPanel.vue'
 import { useEditorStore } from '../../stores/editorStore'
 
 const editorStore = useEditorStore()
 const showJson = computed(() => editorStore.showJsonPreview)
+const showImport = ref(false)
 </script>
 
 <style scoped>

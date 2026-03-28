@@ -1,27 +1,36 @@
 <template>
   <div class="problem-form">
     <h3>Problem</h3>
-    <label>
+    <label :class="{ error: hasError('name') }">
       Name
       <input v-model="name" placeholder="problem1" />
+      <span v-if="hasError('name')" class="err-msg">{{ errorFor('name') }}</span>
     </label>
-    <label>
+    <label :class="{ error: hasError('radius_of_reach') }">
       Radius of Reach
       <input v-model.number="radiusOfReach" type="number" min="1" />
+      <span v-if="hasError('radius_of_reach')" class="err-msg">{{ errorFor('radius_of_reach') }}</span>
     </label>
-    <label>
+    <label :class="{ error: hasError('radius_of_inter') }">
       Radius of Inter
       <input v-model.number="radiusOfInter" type="number" min="1" />
+      <span v-if="hasError('radius_of_inter')" class="err-msg">{{ errorFor('radius_of_inter') }}</span>
     </label>
-    <fieldset>
-      <legend>Region [xmin, ymin, xmax, ymax]</legend>
+    <fieldset :class="{ error: hasError('region') }">
+      <legend>Region</legend>
       <div class="region-row">
+        <span class="axis-label">X</span>
         <input v-model.number="region[0]" type="number" placeholder="xmin" />
-        <input v-model.number="region[1]" type="number" placeholder="ymin" />
         <input v-model.number="region[2]" type="number" placeholder="xmax" />
+      </div>
+      <div class="region-row">
+        <span class="axis-label">Y</span>
+        <input v-model.number="region[1]" type="number" placeholder="ymin" />
         <input v-model.number="region[3]" type="number" placeholder="ymax" />
       </div>
+      <span v-if="hasError('region')" class="err-msg">{{ errorFor('region') }}</span>
     </fieldset>
+    <div v-if="hasError('sink')" class="sink-warn">⚠ {{ errorFor('sink') }}</div>
     <button class="danger" @click="problemStore.reset()">Reset Problem</button>
   </div>
 </template>
@@ -29,9 +38,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useProblemStore } from '../../stores/problemStore'
+import { useValidation } from '../../composables/useValidation'
 import type { Region } from '../../models/problem'
 
 const problemStore = useProblemStore()
+const { hasError, errorFor } = useValidation()
 
 const name = computed({
   get: () => problemStore.draft.name,
@@ -54,9 +65,14 @@ const region = computed({
 <style scoped>
 .problem-form { display: flex; flex-direction: column; gap: 6px; }
 label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
-input { padding: 4px 6px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 12px; }
-fieldset { border: 1px solid #444; border-radius: 4px; padding: 6px; }
+label.error > input { border-color: #f38ba8; }
+input { padding: 3px 4px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 11px; width: 100%; min-width: 0; }
+fieldset { border: 1px solid #444; border-radius: 4px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+fieldset.error { border-color: #f38ba8; }
 legend { font-size: 11px; color: #a6adc8; }
-.region-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; }
+.region-row { display: grid; grid-template-columns: 14px 60px 60px; gap: 4px; align-items: center; }
+.axis-label { font-size: 10px; color: #6c7086; text-align: center; }
+.err-msg { font-size: 10px; color: #f38ba8; }
+.sink-warn { font-size: 11px; color: #fab387; background: #1e1e2e; border: 1px solid #fab38766; border-radius: 4px; padding: 3px 6px; }
 .danger { background: #f38ba8; color: #1e1e2e; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; margin-top: 4px; }
 </style>

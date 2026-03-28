@@ -7,6 +7,8 @@
     <div class="tab-content">
       <template v-if="tab === 'problem'">
         <ProblemForm />
+        <div class="divider" />
+        <CandidateList />
         <CalibrationPanel />
       </template>
       <template v-else>
@@ -22,6 +24,7 @@
 import { ref } from 'vue'
 import ProblemForm from '../problem/ProblemForm.vue'
 import CalibrationPanel from './CalibrationPanel.vue'
+import CandidateList from '../problem/CandidateList.vue'
 import MobileNodeList from '../problem/MobileNodeList.vue'
 import MobileNodeEditor from '../problem/MobileNodeEditor.vue'
 

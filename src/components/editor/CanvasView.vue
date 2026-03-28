@@ -23,6 +23,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useProblemStore } from '../../stores/problemStore'
 import { useEditorStore } from '../../stores/editorStore'
+import { sampleCustomSegment } from '../../services/expressionEvaluator'
 import type { Region } from '../../models/problem'
 
 const problemStore = useProblemStore()
@@ -341,6 +342,25 @@ function drawMobileRoutes(ctx: CanvasRenderingContext2D) {
         ctx.stroke()
         ctx.beginPath(); ctx.arc(cpx, cpy, 3, 0, Math.PI * 2)
         ctx.fillStyle = color; ctx.fill()
+      } else if (seg.type === 'custom') {
+        const pts = sampleCustomSegment(seg.exprX, seg.exprY, 80)
+        if (pts && pts.length > 1) {
+          ctx.beginPath()
+          const [px0, py0] = worldToCanvas(pts[0][0], pts[0][1])
+          ctx.moveTo(px0, py0)
+          for (let i = 1; i < pts.length; i++) {
+            const [px, py] = worldToCanvas(pts[i][0], pts[i][1])
+            ctx.lineTo(px, py)
+          }
+          ctx.stroke()
+          drawArrow(ctx, px0, py0, ...worldToCanvas(pts[pts.length - 1][0], pts[pts.length - 1][1]), color)
+        } else {
+          // Expression error — draw a warning indicator
+          ctx.fillStyle = '#f38ba8'
+          ctx.font = '11px monospace'
+          ctx.textAlign = 'left'
+          ctx.fillText('⚠ expr', viewport.value.offX + 4, viewport.value.offY + 14)
+        }
       }
     }
 

@@ -2,7 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { nanoid } from 'nanoid'
 import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment } from '../models/problem'
-import { saveDraft, loadDraft } from '../services/persistence'
+export type { ProblemDraft }
+import { saveDraft, loadDraft as loadSavedDraft } from '../services/persistence'
 
 function createDefaultDraft(): ProblemDraft {
   return {
@@ -17,7 +18,7 @@ function createDefaultDraft(): ProblemDraft {
 }
 
 export const useProblemStore = defineStore('problem', () => {
-  const saved = loadDraft()
+  const saved = loadSavedDraft()
   const draft = ref<ProblemDraft>(saved ?? createDefaultDraft())
 
   // Auto-save on every change (debounced to 500ms)
@@ -29,6 +30,10 @@ export const useProblemStore = defineStore('problem', () => {
 
   function reset() {
     draft.value = createDefaultDraft()
+  }
+
+  function loadDraft(incoming: ProblemDraft) {
+    draft.value = incoming
   }
 
   function updateMeta(fields: Partial<Pick<ProblemDraft, 'name' | 'radiusOfReach' | 'radiusOfInter' | 'region'>>) {
@@ -94,6 +99,7 @@ export const useProblemStore = defineStore('problem', () => {
   return {
     draft,
     reset,
+    loadDraft,
     updateMeta,
     setSink,
     addCandidate,
