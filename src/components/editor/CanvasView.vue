@@ -17,12 +17,12 @@
     </div>
     <div class="tool-hint" :class="{ warn: isToolWarn }">{{ toolHint }}</div>
 
-    <!-- Scale calibration input overlay -->
-    <div
-      v-if="scaleCalibrateState?.locked"
-      class="scale-input-overlay"
-      :style="scaleOverlayPos"
-    >
+  </div>
+
+  <!-- Scale calibration input — teleported to body so it is never clipped by overflow:hidden
+       and is outside the wrapper's @keydown.capture handler. -->
+  <Teleport to="body">
+    <div v-if="scaleCalibrateState?.locked" class="scale-input-overlay">
       <div class="scale-label">Comprimento real do segmento:</div>
       <div class="scale-dist-hint">Distância atual: {{ scaleCalibrateWorldDist.toFixed(2) }} u</div>
       <input
@@ -32,15 +32,15 @@
         min="0.001"
         step="any"
         placeholder="ex: 50.0"
-        @keydown.enter="applyScaleCalibration"
+        @keydown.enter.stop="applyScaleCalibration"
         @keydown.escape.stop="cancelScaleCalibration"
       />
       <div class="scale-btns">
-        <button class="apply" @click="applyScaleCalibration">Aplicar</button>
-        <button class="cancel" @click="cancelScaleCalibration">Cancelar</button>
+        <button class="apply" @mousedown.prevent="applyScaleCalibration">Aplicar</button>
+        <button class="cancel" @mousedown.prevent="cancelScaleCalibration">Cancelar</button>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -96,34 +96,6 @@ const scaleCalibrateWorldDist = computed(() => {
   return Math.hypot(ms.current[0] - ms.anchor[0], ms.current[1] - ms.anchor[1])
 })
 
-// Estimated rendered overlay dimensions — used to clamp within the overflow:hidden wrapper
-const OVERLAY_W = 234
-const OVERLAY_H = 145
-
-const scaleOverlayPos = computed(() => {
-  const ms = scaleCalibrateState.value
-  if (!ms?.locked) return {}
-  const [ax, ay] = worldToCanvas(ms.anchor[0], ms.anchor[1])
-  const [bx, by] = worldToCanvas(ms.current[0], ms.current[1])
-
-  const midX = (ax + bx) / 2
-  const segTop = Math.min(ay, by)
-  const segBot = Math.max(ay, by)
-
-  // Prefer above the segment; fall back to below if not enough room
-  let topPx = segTop - OVERLAY_H - 10
-  if (topPx < 4) topPx = segBot + 10
-
-  // Clamp so entire overlay stays within the canvas-wrapper (overflow: hidden)
-  topPx = Math.min(topPx, canvasH.value - OVERLAY_H - 4)
-  topPx = Math.max(topPx, 4)
-
-  // Center horizontally on the midpoint, clamped to fit
-  const leftPx = Math.min(Math.max(midX - OVERLAY_W / 2, 4), canvasW.value - OVERLAY_W - 4)
-
-  return { left: `${leftPx}px`, top: `${topPx}px` }
-})
-
 watch(() => scaleCalibrateState.value?.locked, (locked) => {
   if (locked) nextTick(() => scaleInputRef.value?.focus())
 })
@@ -131,7 +103,9 @@ watch(() => scaleCalibrateState.value?.locked, (locked) => {
 function applyScaleCalibration() {
   const ms = scaleCalibrateState.value
   if (!ms?.locked) return
-  const realLen = parseFloat(scaleRealLength.value)
+  // Read directly from the DOM input to avoid any v-model sync edge cases
+  const raw = scaleInputRef.value?.value ?? scaleRealLength.value
+  const realLen = parseFloat(raw)
   if (!isFinite(realLen) || realLen <= 0) return
   const worldDist = scaleCalibrateWorldDist.value
   if (worldDist < 0.001) return
@@ -1155,19 +1129,22 @@ canvas { display: block; width: 100%; height: 100%; }
 }
 .tool-hint.warn { color: #fab387; }
 
-/* Scale calibration input overlay */
+/* Scale calibration input overlay — rendered at body via <Teleport> */
 .scale-input-overlay {
-  position: absolute;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   background: #1e1e2e;
   border: 1.5px solid #00bfff;
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-  box-shadow: 0 4px 20px rgba(0, 191, 255, 0.25);
-  z-index: 10;
+  gap: 8px;
+  min-width: 240px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 0 9999px rgba(0,0,0,0.35);
+  z-index: 9999;
 }
 .scale-label { font-size: 11px; color: #a6adc8; }
 .scale-dist-hint { font-size: 10px; color: #6c7086; font-family: monospace; }
