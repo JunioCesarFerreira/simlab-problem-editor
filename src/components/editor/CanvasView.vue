@@ -96,17 +96,32 @@ const scaleCalibrateWorldDist = computed(() => {
   return Math.hypot(ms.current[0] - ms.anchor[0], ms.current[1] - ms.anchor[1])
 })
 
+// Estimated rendered overlay dimensions — used to clamp within the overflow:hidden wrapper
+const OVERLAY_W = 234
+const OVERLAY_H = 145
+
 const scaleOverlayPos = computed(() => {
   const ms = scaleCalibrateState.value
   if (!ms?.locked) return {}
   const [ax, ay] = worldToCanvas(ms.anchor[0], ms.anchor[1])
   const [bx, by] = worldToCanvas(ms.current[0], ms.current[1])
-  const mx = (ax + bx) / 2
-  const my = Math.min(ay, by) - 8  // place above the segment
-  return {
-    left: `${Math.min(Math.max((mx / canvasW.value) * 100, 5), 75)}%`,
-    top:  `${Math.max((my / canvasH.value) * 100, 2)}%`,
-  }
+
+  const midX = (ax + bx) / 2
+  const segTop = Math.min(ay, by)
+  const segBot = Math.max(ay, by)
+
+  // Prefer above the segment; fall back to below if not enough room
+  let topPx = segTop - OVERLAY_H - 10
+  if (topPx < 4) topPx = segBot + 10
+
+  // Clamp so entire overlay stays within the canvas-wrapper (overflow: hidden)
+  topPx = Math.min(topPx, canvasH.value - OVERLAY_H - 4)
+  topPx = Math.max(topPx, 4)
+
+  // Center horizontally on the midpoint, clamped to fit
+  const leftPx = Math.min(Math.max(midX - OVERLAY_W / 2, 4), canvasW.value - OVERLAY_W - 4)
+
+  return { left: `${leftPx}px`, top: `${topPx}px` }
 })
 
 watch(() => scaleCalibrateState.value?.locked, (locked) => {
@@ -1143,7 +1158,6 @@ canvas { display: block; width: 100%; height: 100%; }
 /* Scale calibration input overlay */
 .scale-input-overlay {
   position: absolute;
-  transform: translateX(-50%);
   background: #1e1e2e;
   border: 1.5px solid #00bfff;
   border-radius: 8px;
