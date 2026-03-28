@@ -377,53 +377,84 @@ function drawSink(ctx: CanvasRenderingContext2D) {
   ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.stroke()
 }
 
-const ROUTE_COLORS = ['#cba6f7', '#fab387', '#f9e2af', '#a6e3a1', '#89dceb', '#89b4fa']
+// Vivid, high-contrast colors for route trajectories
+const ROUTE_COLORS = ['#ff4dc4', '#00e5ff', '#ff6b35', '#39ff14', '#ffe600', '#bf5fff']
+
+// Dash patterns per node index so overlapping routes stay distinguishable
+const ROUTE_DASHES = [
+  [10, 5],
+  [6, 4],
+  [14, 4, 3, 4],
+  [4, 4],
+  [12, 3, 3, 3],
+  [8, 6],
+]
+
+/** Place directional arrows every ~ARROW_SPACING canvas pixels along a path */
+const ARROW_SPACING = 60
 
 function drawMobileRoutes(ctx: CanvasRenderingContext2D) {
   problemStore.draft.mobileNodes.forEach((node, ni) => {
     const color = ROUTE_COLORS[ni % ROUTE_COLORS.length]
+    const dash  = ROUTE_DASHES[ni % ROUTE_DASHES.length]
     const isActive = editorStore.activeNodeId === node.id
+    const lw = isActive ? 3 : 2
+
     ctx.strokeStyle = color
-    ctx.lineWidth = isActive ? 2.5 : 1.5
+    ctx.lineWidth = lw
+    ctx.setLineDash(dash)
 
     for (const seg of node.segments) {
       if (seg.type === 'line') {
         const [px1, py1] = worldToCanvas(seg.start[0], seg.start[1])
         const [px2, py2] = worldToCanvas(seg.end[0], seg.end[1])
         ctx.beginPath(); ctx.moveTo(px1, py1); ctx.lineTo(px2, py2); ctx.stroke()
-        drawArrow(ctx, px1, py1, px2, py2, color)
+        ctx.setLineDash([])
+        drawArrowsAlongLine(ctx, px1, py1, px2, py2, color, lw)
+        ctx.setLineDash(dash)
+        ctx.strokeStyle = color
       } else if (seg.type === 'ellipse') {
         const [cpx, cpy] = worldToCanvas(seg.center[0], seg.center[1])
         const [ex] = worldToCanvas(seg.center[0] + seg.radiusX, seg.center[1])
         const [, ey] = worldToCanvas(seg.center[0], seg.center[1] + seg.radiusY)
+        const rx = Math.abs(ex - cpx)
+        const ry = Math.abs(ey - cpy)
         ctx.beginPath()
-        ctx.ellipse(cpx, cpy, Math.abs(ex - cpx), Math.abs(ey - cpy), 0, 0, Math.PI * 2)
+        ctx.ellipse(cpx, cpy, rx, ry, 0, 0, Math.PI * 2)
         ctx.stroke()
+        ctx.setLineDash([])
+        drawArrowsAlongEllipse(ctx, cpx, cpy, rx, ry, color, lw)
+        ctx.setLineDash(dash)
+        ctx.strokeStyle = color
+        // center dot
         ctx.beginPath(); ctx.arc(cpx, cpy, 3, 0, Math.PI * 2)
         ctx.fillStyle = color; ctx.fill()
       } else if (seg.type === 'custom') {
         const pts = sampleCustomSegment(seg.exprX, seg.exprY, 80)
         if (pts && pts.length > 1) {
+          const canvasPts = pts.map(([wx, wy]) => worldToCanvas(wx, wy))
           ctx.beginPath()
-          const [px0, py0] = worldToCanvas(pts[0][0], pts[0][1])
-          ctx.moveTo(px0, py0)
-          for (let i = 1; i < pts.length; i++) {
-            const [px, py] = worldToCanvas(pts[i][0], pts[i][1])
-            ctx.lineTo(px, py)
-          }
+          ctx.moveTo(canvasPts[0][0], canvasPts[0][1])
+          for (let i = 1; i < canvasPts.length; i++) ctx.lineTo(canvasPts[i][0], canvasPts[i][1])
           ctx.stroke()
-          drawArrow(ctx, px0, py0, ...worldToCanvas(pts[pts.length - 1][0], pts[pts.length - 1][1]), color)
+          ctx.setLineDash([])
+          drawArrowsAlongPath(ctx, canvasPts, color, lw)
+          ctx.setLineDash(dash)
+          ctx.strokeStyle = color
         } else {
-          // Expression error — draw a warning indicator
+          ctx.setLineDash([])
           ctx.fillStyle = '#f38ba8'
           ctx.font = '11px monospace'
           ctx.textAlign = 'left'
           ctx.fillText('⚠ expr', viewport.value.offX + 4, viewport.value.offY + 14)
+          ctx.setLineDash(dash)
         }
       }
     }
 
-    // Node label at first segment start
+    ctx.setLineDash([])
+
+    // Node label
     if (node.segments.length > 0) {
       const s = node.segments[0]
       const lx = s.type === 'line' ? s.start[0] : s.type === 'ellipse' ? s.center[0] : 0
@@ -437,17 +468,71 @@ function drawMobileRoutes(ctx: CanvasRenderingContext2D) {
   })
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string) {
-  if (Math.hypot(x2 - x1, y2 - y1) < 20) return
-  const angle = Math.atan2(y2 - y1, x2 - x1)
-  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
-  const s = 7
+/** Draw a single filled arrowhead at position (ax, ay) pointing in direction `angle` */
+function drawArrowHead(ctx: CanvasRenderingContext2D, ax: number, ay: number, angle: number, color: string, size: number) {
   ctx.fillStyle = color
   ctx.beginPath()
-  ctx.moveTo(mx + Math.cos(angle) * s, my + Math.sin(angle) * s)
-  ctx.lineTo(mx + Math.cos(angle + 2.5) * s * 0.5, my + Math.sin(angle + 2.5) * s * 0.5)
-  ctx.lineTo(mx + Math.cos(angle - 2.5) * s * 0.5, my + Math.sin(angle - 2.5) * s * 0.5)
-  ctx.closePath(); ctx.fill()
+  ctx.moveTo(ax + Math.cos(angle) * size,              ay + Math.sin(angle) * size)
+  ctx.lineTo(ax + Math.cos(angle + 2.4) * size * 0.55, ay + Math.sin(angle + 2.4) * size * 0.55)
+  ctx.lineTo(ax + Math.cos(angle - 2.4) * size * 0.55, ay + Math.sin(angle - 2.4) * size * 0.55)
+  ctx.closePath()
+  ctx.fill()
+}
+
+/** Place arrows every ARROW_SPACING px along a straight segment */
+function drawArrowsAlongLine(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, color: string, lw: number) {
+  const len = Math.hypot(x2 - x1, y2 - y1)
+  if (len < ARROW_SPACING) return
+  const angle = Math.atan2(y2 - y1, x2 - x1)
+  const count = Math.floor(len / ARROW_SPACING)
+  const step = len / (count + 1)
+  for (let i = 1; i <= count; i++) {
+    const t = (i * step) / len
+    drawArrowHead(ctx, x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, angle, color, 7 + lw)
+  }
+}
+
+/** Place arrows every ARROW_SPACING px along an ellipse */
+function drawArrowsAlongEllipse(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number, color: string, lw: number) {
+  // Approximate perimeter via Ramanujan
+  const a = Math.max(rx, ry), b = Math.min(rx, ry)
+  const h = ((a - b) / (a + b)) ** 2
+  const perim = Math.PI * (a + b) * (1 + 3 * h / (10 + Math.sqrt(4 - 3 * h)))
+  if (perim < ARROW_SPACING) return
+  const count = Math.max(1, Math.floor(perim / ARROW_SPACING))
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5) / count
+    const angle = 2 * Math.PI * t
+    const px = cx + rx * Math.cos(angle)
+    const py = cy + ry * Math.sin(angle)
+    // Tangent direction at t: derivative of (cx+rx*cos, cy+ry*sin) → (-rx*sin, ry*cos)
+    const tangent = Math.atan2(ry * Math.cos(angle), -rx * Math.sin(angle))
+    drawArrowHead(ctx, px, py, tangent, color, 7 + lw)
+  }
+}
+
+/** Place arrows every ARROW_SPACING px along an arbitrary polyline (canvas coords) */
+function drawArrowsAlongPath(ctx: CanvasRenderingContext2D, pts: [number, number][], color: string, lw: number) {
+  // Compute cumulative arc lengths
+  const cumLen: number[] = [0]
+  for (let i = 1; i < pts.length; i++) {
+    cumLen.push(cumLen[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+  }
+  const total = cumLen[cumLen.length - 1]
+  if (total < ARROW_SPACING) return
+  const count = Math.floor(total / ARROW_SPACING)
+  for (let k = 1; k <= count; k++) {
+    const target = (k / (count + 1)) * total
+    // Find segment containing target
+    let i = 1
+    while (i < cumLen.length - 1 && cumLen[i] < target) i++
+    const segLen = cumLen[i] - cumLen[i - 1]
+    const t = segLen > 0 ? (target - cumLen[i - 1]) / segLen : 0
+    const px = pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t
+    const py = pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t
+    const angle = Math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0])
+    drawArrowHead(ctx, px, py, angle, color, 7 + lw)
+  }
 }
 
 function drawPolylinePreview(ctx: CanvasRenderingContext2D) {
