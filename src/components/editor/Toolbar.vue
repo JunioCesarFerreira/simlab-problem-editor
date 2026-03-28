@@ -29,11 +29,11 @@ const activeTool = computed(() => editorStore.activeTool)
 const showJson = computed(() => editorStore.showJsonPreview)
 
 const tools: { id: EditorTool; icon: string; label: string }[] = [
-  { id: 'select',            icon: '↖',  label: 'Select / Move' },
-  { id: 'place-sink',        icon: '⊕',  label: 'Place Sink' },
-  { id: 'place-candidate',   icon: '●',  label: 'Place Candidate' },
-  { id: 'draw-line',         icon: '╱',  label: 'Draw Line Segment' },
-  { id: 'draw-ellipse',      icon: '○',  label: 'Draw Ellipse' },
+  { id: 'select',            icon: '↖',  label: 'Select / Move  [S]' },
+  { id: 'place-sink',        icon: '⊕',  label: 'Place Sink  [K]' },
+  { id: 'place-candidate',   icon: '●',  label: 'Place Candidate  [C]' },
+  { id: 'draw-line',         icon: '╱',  label: 'Draw Polyline  [L] — right-click/Esc to finish' },
+  { id: 'draw-ellipse',      icon: '○',  label: 'Draw Ellipse  [E] — drag to define radii' },
 ]
 
 function loadImage(event: Event) {

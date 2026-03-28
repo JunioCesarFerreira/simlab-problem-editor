@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { nanoid } from 'nanoid'
 import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment } from '../models/problem'
+import { saveDraft, loadDraft } from '../services/persistence'
 
 function createDefaultDraft(): ProblemDraft {
   return {
@@ -16,7 +17,15 @@ function createDefaultDraft(): ProblemDraft {
 }
 
 export const useProblemStore = defineStore('problem', () => {
-  const draft = ref<ProblemDraft>(createDefaultDraft())
+  const saved = loadDraft()
+  const draft = ref<ProblemDraft>(saved ?? createDefaultDraft())
+
+  // Auto-save on every change (debounced to 500ms)
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  watch(draft, (val) => {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => saveDraft(val), 500)
+  }, { deep: true })
 
   function reset() {
     draft.value = createDefaultDraft()
@@ -77,6 +86,11 @@ export const useProblemStore = defineStore('problem', () => {
     if (node) node.segments.splice(index, 1)
   }
 
+  function removeLastSegmentFromNode(nodeId: string) {
+    const node = draft.value.mobileNodes.find(n => n.id === nodeId)
+    if (node && node.segments.length > 0) node.segments.pop()
+  }
+
   return {
     draft,
     reset,
@@ -90,5 +104,6 @@ export const useProblemStore = defineStore('problem', () => {
     updateMobileNode,
     addSegmentToNode,
     removeSegmentFromNode,
+    removeLastSegmentFromNode,
   }
 })
