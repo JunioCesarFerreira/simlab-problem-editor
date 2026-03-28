@@ -3,9 +3,10 @@
     <h3>{{ node.name }}</h3>
     <label>Name<input v-model="node.name" /></label>
     <label>Source Code<input v-model="node.sourceCode" /></label>
-    <div class="row">
-      <label>Speed<input v-model.number="node.speed" type="number" min="0.1" step="0.1" /></label>
-      <label>Time Step<input v-model.number="node.timeStep" type="number" min="0.01" step="0.01" /></label>
+    <div class="coord-row">
+      <span class="axis-label">Spd</span>
+      <input v-model.number="node.speed" type="number" min="0.1" step="0.1" placeholder="speed" />
+      <input v-model.number="node.timeStep" type="number" min="0.01" step="0.01" placeholder="step" />
     </div>
     <div class="checkboxes">
       <label class="inline"><input type="checkbox" v-model="node.isClosed" /> Closed</label>
@@ -53,8 +54,9 @@ function describeSegment(seg: DraftSegment): string {
 .mobile-node-editor { display: flex; flex-direction: column; gap: 6px; }
 label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
 label.inline { flex-direction: row; align-items: center; gap: 4px; }
-input:not([type=checkbox]) { padding: 4px 6px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 12px; }
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+input:not([type=checkbox]) { padding: 3px 4px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 11px; width: 100%; min-width: 0; }
+.coord-row { display: grid; grid-template-columns: 28px 60px 60px; gap: 4px; align-items: center; }
+.axis-label { font-size: 10px; color: #6c7086; text-align: right; }
 .checkboxes { display: flex; gap: 12px; font-size: 12px; }
 .segments-section { margin-top: 4px; }
 .seg-header { font-size: 11px; color: #a6adc8; margin-bottom: 4px; }

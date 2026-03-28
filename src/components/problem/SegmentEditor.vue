@@ -8,24 +8,28 @@
     </div>
 
     <div v-if="tab === 'line'" class="fields">
-      <div class="row">
-        <label>x0<input v-model.number="line.x0" type="number" /></label>
-        <label>y0<input v-model.number="line.y0" type="number" /></label>
+      <div class="coord-row">
+        <span class="axis-label">P0</span>
+        <input v-model.number="line.x0" type="number" placeholder="x0" />
+        <input v-model.number="line.y0" type="number" placeholder="y0" />
       </div>
-      <div class="row">
-        <label>x1<input v-model.number="line.x1" type="number" /></label>
-        <label>y1<input v-model.number="line.y1" type="number" /></label>
+      <div class="coord-row">
+        <span class="axis-label">P1</span>
+        <input v-model.number="line.x1" type="number" placeholder="x1" />
+        <input v-model.number="line.y1" type="number" placeholder="y1" />
       </div>
     </div>
 
     <div v-if="tab === 'ellipse'" class="fields">
-      <div class="row">
-        <label>cx<input v-model.number="ellipse.cx" type="number" /></label>
-        <label>cy<input v-model.number="ellipse.cy" type="number" /></label>
+      <div class="coord-row">
+        <span class="axis-label">C</span>
+        <input v-model.number="ellipse.cx" type="number" placeholder="cx" />
+        <input v-model.number="ellipse.cy" type="number" placeholder="cy" />
       </div>
-      <div class="row">
-        <label>rx<input v-model.number="ellipse.rx" type="number" min="1" /></label>
-        <label>ry<input v-model.number="ellipse.ry" type="number" min="1" /></label>
+      <div class="coord-row">
+        <span class="axis-label">R</span>
+        <input v-model.number="ellipse.rx" type="number" placeholder="rx" min="1" />
+        <input v-model.number="ellipse.ry" type="number" placeholder="ry" min="1" />
       </div>
     </div>
 
@@ -100,10 +104,11 @@ function addSegment() {
 .tabs button { flex: 1; font-size: 11px; padding: 3px; background: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; cursor: pointer; }
 .tabs button.active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
 .fields { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.coord-row { display: grid; grid-template-columns: 20px 60px 60px; gap: 4px; align-items: center; }
+.axis-label { font-size: 10px; color: #6c7086; text-align: center; }
 label { display: flex; flex-direction: column; font-size: 11px; gap: 2px; }
 label.error > input { border-color: #f38ba8; }
-input { padding: 3px 5px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 11px; }
+input { padding: 3px 4px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 11px; width: 100%; min-width: 0; }
 .err-msg { font-size: 10px; color: #f38ba8; line-height: 1.3; }
 .custom-hint { font-size: 10px; color: #6c7086; line-height: 1.5; }
 code { color: #a6adc8; font-size: 10px; }
