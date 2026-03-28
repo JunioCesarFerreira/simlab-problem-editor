@@ -55,6 +55,19 @@ const dragState = ref<{
 /** Suppress the click that fires after dblclick */
 let suppressNextClick = false
 
+// ─── Tape measure ─────────────────────────────────────────────────────────────
+
+/**
+ * anchor: fixed first point (world coords)
+ * current: live or locked second point (world coords)
+ * locked: true once user releases the mouse button
+ */
+const measureState = ref<{
+  anchor: [number, number]
+  current: [number, number]
+  locked: boolean
+} | null>(null)
+
 // ─── Region resize ────────────────────────────────────────────────────────────
 
 type RegionHandle = 'tl' | 't' | 'tr' | 'r' | 'br' | 'b' | 'bl' | 'l'
@@ -187,6 +200,7 @@ const canvasCursor = computed(() => {
   if (hoveredHandle.value) return HANDLE_CURSORS[hoveredHandle.value]
   const t = editorStore.activeTool
   if (t === 'select') return dragState.value?.moved ? 'grabbing' : 'default'
+  if (t === 'measure') return 'crosshair'
   return 'crosshair'
 })
 
@@ -209,6 +223,12 @@ const toolHint = computed(() => {
       ? 'Solte para confirmar a elipse'
       : 'Arraste para definir centro e raios da elipse'
   }
+  if (t === 'measure') {
+    if (!measureState.value) return 'Arraste para medir distância  [M]  ·  Esc cancela'
+    if (!measureState.value.locked) return 'Solte para fixar a medição  ·  Esc cancela'
+    const d = measureDistance()
+    return `Distância: ${d.toFixed(1)} u  ·  clique ou Esc para limpar`
+  }
   const hints: Record<string, string> = {
     'select': 'Clique para selecionar · arraste para mover · Del para remover · clique direito para remover',
     'place-sink': 'Clique para posicionar o sink  [K]',
@@ -216,6 +236,13 @@ const toolHint = computed(() => {
   }
   return hints[t] ?? ''
 })
+
+function measureDistance(): number {
+  if (!measureState.value) return 0
+  const [ax, ay] = measureState.value.anchor
+  const [bx, by] = measureState.value.current
+  return Math.hypot(bx - ax, by - ay)
+}
 
 // ─── Drawing ──────────────────────────────────────────────────────────────────
 
@@ -269,6 +296,7 @@ function draw() {
   drawSink(ctx)
   drawPolylinePreview(ctx)
   drawEllipsePreview(ctx)
+  drawMeasure(ctx)
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
@@ -601,10 +629,81 @@ function drawEllipsePreview(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = '#89b4fa'; ctx.fill()
 }
 
+function drawMeasure(ctx: CanvasRenderingContext2D) {
+  const ms = measureState.value
+  // Draw live ghost from anchor to mouse when not locked yet
+  const current = ms?.locked ? ms.current : (hover.value ?? ms?.current ?? null)
+  const liveAnchor = ms?.anchor ?? null
+
+  if (!liveAnchor || !current) {
+    // No measurement yet — draw crosshair snap dot on hover in measure mode
+    if (editorStore.activeTool === 'measure' && hover.value) {
+      const [hx, hy] = worldToCanvas(hover.value[0], hover.value[1])
+      ctx.beginPath(); ctx.arc(hx, hy, 4, 0, Math.PI * 2)
+      ctx.strokeStyle = '#ffe600'; ctx.lineWidth = 1.5; ctx.stroke()
+    }
+    return
+  }
+
+  const [ax, ay] = worldToCanvas(liveAnchor[0], liveAnchor[1])
+  const [bx, by] = worldToCanvas(current[0], current[1])
+  const dist = Math.hypot(current[0] - liveAnchor[0], current[1] - liveAnchor[1])
+  const locked = ms?.locked ?? false
+
+  // Main line
+  ctx.strokeStyle = '#ffe600'
+  ctx.lineWidth = locked ? 2 : 1.5
+  ctx.setLineDash(locked ? [] : [6, 4])
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
+  ctx.setLineDash([])
+
+  // End ticks (perpendicular to line)
+  const len = Math.hypot(bx - ax, by - ay)
+  if (len > 4) {
+    const nx = -(by - ay) / len * 8
+    const ny =  (bx - ax) / len * 8
+    ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.moveTo(ax + nx, ay + ny); ctx.lineTo(ax - nx, ay - ny); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(bx + nx, by + ny); ctx.lineTo(bx - nx, by - ny); ctx.stroke()
+  }
+
+  // Anchor dot
+  ctx.beginPath(); ctx.arc(ax, ay, 4, 0, Math.PI * 2)
+  ctx.fillStyle = '#ffe600'; ctx.fill()
+
+  // Current dot
+  ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI * 2)
+  ctx.fillStyle = locked ? '#ffe600' : '#fff'
+  ctx.fill()
+
+  // Distance label
+  const midX = (ax + bx) / 2
+  const midY = (ay + by) / 2
+  const label = `${dist.toFixed(1)} u`
+  ctx.font = 'bold 13px monospace'
+  const tw = ctx.measureText(label).width
+  ctx.fillStyle = 'rgba(24,24,37,0.8)'
+  ctx.fillRect(midX - tw / 2 - 5, midY - 11, tw + 10, 17)
+  ctx.fillStyle = '#ffe600'
+  ctx.textAlign = 'center'
+  ctx.fillText(label, midX, midY + 4)
+
+  // dx / dy annotation when locked
+  if (locked && len > 20) {
+    const dx = Math.abs(current[0] - liveAnchor[0])
+    const dy = Math.abs(current[1] - liveAnchor[1])
+    ctx.font = '10px monospace'
+    ctx.fillStyle = '#a6adc8'
+    ctx.textAlign = 'left'
+    ctx.fillText(`Δx=${dx.toFixed(1)}  Δy=${dy.toFixed(1)}`, midX + 8, midY + 20)
+  }
+}
+
 // Watch and redraw
 watch(
   [() => problemStore.draft, canvasW, canvasH, hover, polylinePoints, ellipseDrag,
-    () => editorStore.selected, () => editorStore.imageWorldBounds, hoveredHandle, regionDrag],
+    () => editorStore.selected, () => editorStore.imageWorldBounds, hoveredHandle, regionDrag,
+    measureState],
   () => draw(),
   { deep: true }
 )
@@ -653,6 +752,11 @@ function handleMouseDown(e: MouseEvent) {
   if (tool === 'draw-ellipse' && editorStore.activeNodeId) {
     ellipseDrag.value = { center: [snap(wx), snap(wy)], current: [wx, wy] }
   }
+
+  if (tool === 'measure') {
+    // If already locked, a new mousedown starts fresh
+    measureState.value = { anchor: [wx, wy], current: [wx, wy], locked: false }
+  }
 }
 
 function handleMouseMove(e: MouseEvent) {
@@ -686,6 +790,10 @@ function handleMouseMove(e: MouseEvent) {
   if (ellipseDrag.value) {
     ellipseDrag.value = { ...ellipseDrag.value, current: [wx, wy] }
   }
+
+  if (measureState.value && !measureState.value.locked) {
+    measureState.value = { ...measureState.value, current: [wx, wy] }
+  }
 }
 
 function handleMouseUp(e: MouseEvent) {
@@ -714,6 +822,14 @@ function handleMouseUp(e: MouseEvent) {
       })
     }
     ellipseDrag.value = null
+    return
+  }
+
+  // Lock tape measure on mouse-up
+  if (measureState.value && !measureState.value.locked) {
+    const [cx2, cy2] = getCanvasPos(e)
+    const [wx2, wy2] = canvasToWorld(cx2, cy2)
+    measureState.value = { ...measureState.value, current: [wx2, wy2], locked: true }
     return
   }
 
@@ -785,6 +901,7 @@ function handleKey(e: KeyboardEvent) {
     ellipseDrag.value = null
     dragState.value = null
     regionDrag.value = null
+    measureState.value = null
     editorStore.setSelected(null)
     e.preventDefault()
   }
@@ -798,13 +915,14 @@ function handleKey(e: KeyboardEvent) {
 
   if (!e.ctrlKey && !e.metaKey && !isInputTarget(e)) {
     const map: Record<string, typeof editorStore.activeTool> = {
-      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 'l': 'draw-line', 'e': 'draw-ellipse',
+      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure',
     }
     const t = map[e.key.toLowerCase()]
     if (t) {
       editorStore.setTool(t)
       polylinePoints.value = []
       ellipseDrag.value = null
+      measureState.value = null
     }
   }
 }
