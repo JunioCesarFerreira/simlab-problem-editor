@@ -17,6 +17,7 @@
     </div>
     <div class="spacer" />
     <button title="Import JSON" @click="$emit('import')">⬆</button>
+    <button :class="{ active: showConnectivity }" title="Connectivity Graph  [G] — show/hide reach radius and edges" @click="editorStore.toggleConnectivity()">⬡</button>
     <button :class="{ active: showJson }" title="JSON Preview  [{ }]" @click="editorStore.toggleJsonPreview()">{ }</button>
   </div>
 </template>
@@ -30,6 +31,7 @@ defineEmits<{ import: [] }>()
 const editorStore = useEditorStore()
 const activeTool = computed(() => editorStore.activeTool)
 const showJson = computed(() => editorStore.showJsonPreview)
+const showConnectivity = computed(() => editorStore.showConnectivity)
 
 const tools: { id: EditorTool; icon: string; label: string }[] = [
   { id: 'select',            icon: '↖',  label: 'Select / Move  [S]' },

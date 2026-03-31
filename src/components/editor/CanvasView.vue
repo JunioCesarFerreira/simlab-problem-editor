@@ -375,6 +375,7 @@ function draw() {
 
   drawGrid(ctx)
   drawRegionBorder(ctx)
+  drawConnectivityGraph(ctx)
   drawMobileRoutes(ctx)
   drawCandidates(ctx)
   drawSink(ctx)
@@ -382,6 +383,65 @@ function draw() {
   drawEllipsePreview(ctx)
   drawMeasure(ctx)
   drawScaleCalibrate(ctx)
+}
+
+function drawConnectivityGraph(ctx: CanvasRenderingContext2D) {
+  if (!editorStore.showConnectivity) return
+
+  const { radiusOfReach, radiusOfInter } = problemStore.draft
+  const { scale } = viewport.value
+  const rReach = radiusOfReach * scale
+  const rInter  = radiusOfInter  * scale
+
+  // Collect sink + candidates as network nodes
+  type NetNode = { x: number; y: number }
+  const nodes: NetNode[] = []
+  if (problemStore.draft.sink) nodes.push(problemStore.draft.sink)
+  for (const c of problemStore.draft.candidates) nodes.push({ x: c.x, y: c.y })
+  if (nodes.length === 0) return
+
+  // ── Interference radius circles (orange, very faint) ──────────────────────
+  for (const n of nodes) {
+    const [px, py] = worldToCanvas(n.x, n.y)
+    ctx.beginPath(); ctx.arc(px, py, rInter, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(250,179,135,0.04)'; ctx.fill()
+    ctx.setLineDash([3, 5])
+    ctx.strokeStyle = 'rgba(250,179,135,0.20)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  // ── Reach radius circles (blue, subtle) ───────────────────────────────────
+  for (const n of nodes) {
+    const [px, py] = worldToCanvas(n.x, n.y)
+    ctx.beginPath(); ctx.arc(px, py, rReach, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(137,180,250,0.06)'; ctx.fill()
+    ctx.setLineDash([5, 4])
+    ctx.strokeStyle = 'rgba(137,180,250,0.35)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  // ── Edges for pairs within radiusOfReach ──────────────────────────────────
+  const connected = new Set<number>()
+  ctx.strokeStyle = 'rgba(137,180,250,0.55)'; ctx.lineWidth = 1
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const d = Math.hypot(nodes[j].x - nodes[i].x, nodes[j].y - nodes[i].y)
+      if (d <= radiusOfReach) {
+        connected.add(i); connected.add(j)
+        const [ax, ay] = worldToCanvas(nodes[i].x, nodes[i].y)
+        const [bx, by] = worldToCanvas(nodes[j].x, nodes[j].y)
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
+      }
+    }
+  }
+
+  // ── Isolated nodes — red ring ──────────────────────────────────────────────
+  for (let i = 0; i < nodes.length; i++) {
+    if (connected.has(i)) continue
+    const [px, py] = worldToCanvas(nodes[i].x, nodes[i].y)
+    ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(243,139,168,0.85)'; ctx.lineWidth = 2; ctx.stroke()
+  }
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
@@ -867,7 +927,8 @@ function drawScaleCalibrate(ctx: CanvasRenderingContext2D) {
 // Watch and redraw
 watch(
   [() => problemStore.draft, canvasW, canvasH, hover, polylinePoints, ellipseDrag,
-    () => editorStore.selected, () => editorStore.imageWorldBounds, hoveredHandle, regionDrag,
+    () => editorStore.selected, () => editorStore.imageWorldBounds,
+    () => editorStore.showConnectivity, hoveredHandle, regionDrag,
     measureState, scaleCalibrateState],
   () => draw(),
   { deep: true }
@@ -1106,6 +1167,9 @@ function handleKey(e: KeyboardEvent) {
       ellipseDrag.value = null
       measureState.value = null
       cancelScaleCalibration()
+    }
+    if (e.key.toLowerCase() === 'g') {
+      editorStore.toggleConnectivity()
     }
   }
 }

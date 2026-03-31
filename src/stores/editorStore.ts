@@ -20,6 +20,7 @@ export const useEditorStore = defineStore('editor', () => {
    * null = uncalibrated (image is fit-inside the region viewport, preserving aspect ratio).
    */
   const imageWorldBounds = ref<[number, number, number, number] | null>(null)
+  const showConnectivity = ref(false)
 
   function setTool(tool: EditorTool) {
     activeTool.value = tool
@@ -38,6 +39,8 @@ export const useEditorStore = defineStore('editor', () => {
     imageWorldBounds.value = bounds
   }
 
+  function toggleConnectivity() { showConnectivity.value = !showConnectivity.value }
+
   return {
     activeTool,
     backgroundImage,
@@ -45,11 +48,13 @@ export const useEditorStore = defineStore('editor', () => {
     showJsonPreview,
     selected,
     imageWorldBounds,
+    showConnectivity,
     setTool,
     setBackground,
     setActiveNode,
     toggleJsonPreview,
     setSelected,
     setImageWorldBounds,
+    toggleConnectivity,
   }
 })
