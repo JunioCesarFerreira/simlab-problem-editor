@@ -1,50 +1,103 @@
 # simlab-problem-editor
 
-Visual editor for authoring WSN problem instances compatible with the [SimLab](https://github.com/JunioCesarFerreira/simlab) simulation pipeline.
+Visual editor for authoring Wireless Sensor Network (WSN) problem instances compatible with the [SimLab](https://github.com/JunioCesarFerreira/simlab) experimentation pipeline.
 
 🇧🇷 [Leia em português](README_pt.md)
 
 ## Overview
 
-**simlab-problem-editor** is a browser-based canvas editor built with **Vue 3 + TypeScript + Pinia** that lets you visually design Wireless Sensor Network (WSN) problem instances and export them as JSON in the exact format consumed by SimLab's optimization and simulation engine.
+**simlab-problem-editor** is a browser-based visual editor built with **Vue 3**, **TypeScript**, and **Pinia** for creating WSN problem instances in the JSON format expected by **SimLab**.
 
-Instead of writing JSON by hand, you load a reference image of the deployment area, draw the region boundary, place the sink and candidate nodes, trace mobile node trajectories, and export — the tool generates the parametric path expressions automatically.
+The tool was designed to simplify the definition of spatial network scenarios by replacing manual JSON authoring with an interactive canvas workflow. Instead of editing coordinates and trajectory expressions by hand, you can use a reference image, define the region of interest, place the sink and candidate nodes, draw mobile node paths, and export a problem instance directly.
 
-## Features
+This is particularly useful for scenarios in which the spatial structure matters, such as synthetic urban layouts, industrial monitoring areas, or mobility-aware communication experiments.
 
-- **Background image** — load any image as a spatial reference; calibrate its bounds to world coordinates
-- **Scale calibration** — drag a known-length segment on the image to rescale all world coordinates consistently
-- **Region definition** — set the problem bounding box `[xmin, ymin, xmax, ymax]`
-- **Sink placement** — place exactly one sink node on the canvas
-- **Candidate placement** — add, move, and remove candidate sensor positions
-- **Mobile node trajectories** — draw multi-segment routes using:
-  - Polyline (piecewise linear)
-  - Ellipse (generates trigonometric parametric expressions)
-- **Connectivity graph** — toggle (`G` / ⬡ button) to visualize edges between nodes within `radiusOfReach`
-- **Measure tool** — ruler to measure distances in world coordinates
-- **JSON export** — generates a valid `{ "problem": { ... } }` file ready for SimLab
-- **JSON preview** — live panel showing the current problem as formatted JSON
+## What the editor does
+
+With **simlab-problem-editor**, you can:
+
+- load a background image as a spatial reference
+- calibrate the canvas scale to real-world coordinates
+- define the problem region
+- place the sink node
+- place and edit candidate fixed-node positions
+- design mobile-node trajectories visually
+- inspect communication reach through a connectivity overlay
+- measure distances directly on the scene
+- export the final instance as SimLab-compatible JSON
+
+The exported output is intended to be consumed by SimLab’s optimization and simulation components.
+
+## Main Features
+
+- **Background image support**  
+  Import a map, floor plan, sketch, or any other image to serve as a geometric reference for the scenario.
+
+- **World-coordinate calibration**  
+  Define scale using a known-distance segment so that all positions are converted consistently into world coordinates.
+
+- **Region definition**  
+  Specify the scenario bounding box in the form `[xmin, ymin, xmax, ymax]`.
+
+- **Sink placement**  
+  Insert exactly one sink node in the problem instance.
+
+- **Candidate-node placement**  
+  Add, move, and remove candidate positions for fixed communication nodes.
+
+- **Mobile trajectory authoring**  
+  Draw trajectories for mobile nodes using:
+  - **Polyline segments**
+  - **Elliptic paths**
+
+- **Automatic parametric path generation**  
+  Convert visually defined trajectories into parametric expressions suitable for downstream processing in SimLab.
+
+- **Connectivity graph visualization**  
+  Display edges between nodes that fall within the communication radius.
+
+- **Measurement tool**  
+  Measure distances in calibrated world units directly on the canvas.
+
+- **Live JSON preview**  
+  Inspect the generated instance in real time while editing.
+
+- **JSON export**  
+  Produce a valid `{ "problem": { ... } }` object ready to be used in SimLab workflows.
+
+## Typical Workflow
+
+1. Load a reference image.
+2. Calibrate the image scale.
+3. Define the scenario region.
+4. Place the sink node.
+5. Add candidate fixed-node positions.
+6. Draw mobile-node trajectories.
+7. Inspect connectivity and distances.
+8. Export the generated JSON instance.
+
+This workflow makes it easier to construct reproducible WSN scenarios without manually deriving coordinates and path expressions.
 
 ## Keyboard Shortcuts
 
 | Key | Action |
-|-----|--------|
+|------|--------|
 | `S` | Select tool |
 | `K` | Place sink |
 | `C` | Place candidate |
-| `L` | Draw line (polyline segment) |
+| `L` | Draw line / polyline segment |
 | `E` | Draw ellipse |
-| `M` | Measure |
-| `R` | Scale calibration |
+| `M` | Measure distance |
+| `R` | Calibrate scale |
 | `G` | Toggle connectivity graph |
 | `Del` | Remove selected element |
 | `Esc` | Cancel current drawing |
-| Scroll | Zoom |
-| Middle-drag | Pan |
+| `Scroll` | Zoom |
+| `Middle-drag` | Pan |
 
 ## Output Format
 
-The editor exports JSON in the SimLab problem schema:
+The editor exports JSON following the SimLab problem schema:
 
 ```json
 {
@@ -64,34 +117,48 @@ The editor exports JSON in the SimLab problem schema:
         "is_closed": true,
         "is_round_trip": false,
         "path_segments": [
-          ["cx + rx * np.cos(2 * np.pi * t)", "cy + ry * np.sin(2 * np.pi * t)"]
+          [
+            "cx + rx * np.cos(2 * np.pi * t)",
+            "cy + ry * np.sin(2 * np.pi * t)"
+          ]
         ]
       }
     ]
   }
 }
-```
+````
 
-Parametric expressions use `t ∈ [0, 1]` per segment and reference `np.cos`, `np.sin`, and `np.pi` — compatible with NumPy-based SimLab solvers.
+### Notes on path expressions
 
-## Tech Stack
+* Each path segment is represented parametrically with `t ∈ [0, 1]`.
+* Expressions may use `np.cos`, `np.sin`, and `np.pi`.
+* The generated format is compatible with NumPy-based processing used in SimLab.
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Vue 3 (Composition API) |
-| Language | TypeScript |
-| State | Pinia |
-| Rendering | HTML5 Canvas 2D |
-| Build | Vite |
+## Technology Stack
+
+| Layer            | Technology              |
+| ---------------- | ----------------------- |
+| Framework        | Vue 3 (Composition API) |
+| Language         | TypeScript              |
+| State Management | Pinia                   |
+| Rendering        | HTML5 Canvas 2D         |
+| Build Tool       | Vite                    |
 
 ## Getting Started
 
+### Install dependencies
+
 ```bash
 npm install
+```
+
+### Run in development mode
+
+```bash
 npm run dev
 ```
 
-Build for production:
+### Build for production
 
 ```bash
 npm run build
@@ -99,30 +166,40 @@ npm run build
 
 ## Project Structure
 
-```
+```text
 src/
   components/
     editor/
-      ProblemEditor.vue   # root editor layout
-      CanvasView.vue      # canvas, tools, drawing logic
-      Toolbar.vue         # tool buttons and toggles
-      PropertiesPanel.vue # selected element properties
-      JsonPreviewPanel.vue
+      ProblemEditor.vue      # Root editor layout
+      CanvasView.vue         # Canvas rendering and interaction logic
+      Toolbar.vue            # Tool buttons and editor actions
+      PropertiesPanel.vue    # Editable properties of the selected element
+      JsonPreviewPanel.vue   # Live JSON visualization
   stores/
-    problemStore.ts       # problem data and export logic
-    editorStore.ts        # UI state (active tool, viewport, overlays)
+    problemStore.ts          # Problem model state and export logic
+    editorStore.ts           # UI state, active tool, viewport, overlays
   models/
-    problem.ts            # domain types
+    problem.ts               # Domain types and interfaces
   services/
-    exportProblemJson.ts  # draft → SimLab JSON
+    exportProblemJson.ts     # Conversion from editor state to SimLab JSON
 ```
+
+## Use Cases
+
+This editor is useful for:
+
+* rapid prototyping of WSN scenarios
+* mobility-aware network design experiments
+* preparing benchmark instances for optimization pipelines
+* generating problem inputs for simulation-based evaluation
+* visually defining structured scenarios from maps or layout images
 
 ## Related Repositories
 
-- [SimLab](https://github.com/JunioCesarFerreira/simlab) — simulation and optimization engine
-- [wsn-design-space-exploration](https://github.com/JunioCesarFerreira/wsn-design-space-exploration) — MILP / multi-objective comparison framework
-- [Cooja-MO-SimLab](https://github.com/JunioCesarFerreira/Cooja-MO-SimLab) — early Cooja-based SimLab prototype
+* [SimLab](https://github.com/JunioCesarFerreira/simlab) — experimentation, simulation, and optimization pipeline
+* [wsn-design-space-exploration](https://github.com/JunioCesarFerreira/wsn-design-space-exploration) — MILP and multi-objective design-space exploration framework
+* [Cooja-MO-SimLab](https://github.com/JunioCesarFerreira/Cooja-MO-SimLab) — early Cooja-based SimLab prototype
 
 ## License
 
-MIT
+This project is licensed under the **MIT License**.
