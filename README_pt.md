@@ -2,6 +2,8 @@
 
 Editor visual para criação de instâncias de problemas de Redes de Sensores sem Fio (WSN — *Wireless Sensor Networks*) compatíveis com o pipeline de experimentação do [SimLab](https://github.com/JunioCesarFerreira/simlab).
 
+**[Demo online](https://juniocesarferreira.github.io/simlab-problem-editor/)**
+
 🇺🇸 [Read in English](README.md)
 
 ## Visão Geral

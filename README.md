@@ -2,6 +2,8 @@
 
 Visual editor for authoring Wireless Sensor Network (WSN) problem instances compatible with the [SimLab](https://github.com/JunioCesarFerreira/simlab) experimentation pipeline.
 
+**[Live demo](https://juniocesarferreira.github.io/simlab-problem-editor/)**
+
 🇧🇷 [Leia em português](README_pt.md)
 
 ## Overview
