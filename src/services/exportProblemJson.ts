@@ -1,8 +1,14 @@
 import type { ProblemDraft, ExportedProblemFile } from '../models/problem'
+import { hasCandidates } from '../models/problem'
 import { buildSegmentExpressions } from './segmentExpressionBuilder'
 
 export function exportProblem(draft: ProblemDraft): ExportedProblemFile {
   if (!draft.sink) throw new Error('Cannot export: sink is not defined')
+
+  const candidatesOrSensors = hasCandidates(draft.name)
+    ? { candidates: draft.candidates.map(c => [c.x, c.y] as [number, number]) }
+    : { num_sensors: draft.numSensors }
+
   return {
     problem: {
       name: draft.name,
@@ -10,7 +16,7 @@ export function exportProblem(draft: ProblemDraft): ExportedProblemFile {
       radius_of_inter: draft.radiusOfInter,
       region: draft.region,
       sink: [draft.sink.x, draft.sink.y],
-      candidates: draft.candidates.map(c => [c.x, c.y] as [number, number]),
+      ...candidatesOrSensors,
       mobile_nodes: draft.mobileNodes.map(m => ({
         name: m.name,
         source_code: m.sourceCode,

@@ -1,10 +1,15 @@
 <template>
   <div class="problem-form">
     <h3>Problem</h3>
-    <label :class="{ error: hasError('name') }">
+    <label>
       Name
-      <input v-model="name" placeholder="problem1" />
-      <span v-if="hasError('name')" class="err-msg">{{ errorFor('name') }}</span>
+      <select v-model="name">
+        <option v-for="opt in PROBLEM_NAMES" :key="opt" :value="opt">{{ opt }}</option>
+      </select>
+    </label>
+    <label v-if="!hasCandidates(name)">
+      Number of Sensors
+      <input v-model.number="numSensors" type="number" min="1" />
     </label>
     <label :class="{ error: hasError('radius_of_reach') }">
       Radius of Reach
@@ -39,6 +44,7 @@
 import { computed } from 'vue'
 import { useProblemStore } from '../../stores/problemStore'
 import { useValidation } from '../../composables/useValidation'
+import { PROBLEM_NAMES, hasCandidates } from '../../models/problem'
 import type { Region } from '../../models/problem'
 
 const problemStore = useProblemStore()
@@ -47,6 +53,10 @@ const { hasError, errorFor } = useValidation()
 const name = computed({
   get: () => problemStore.draft.name,
   set: v => problemStore.updateMeta({ name: v }),
+})
+const numSensors = computed({
+  get: () => problemStore.draft.numSensors,
+  set: v => problemStore.updateMeta({ numSensors: v }),
 })
 const radiusOfReach = computed({
   get: () => problemStore.draft.radiusOfReach,
@@ -66,7 +76,7 @@ const region = computed({
 .problem-form { display: flex; flex-direction: column; gap: 6px; }
 label { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
 label.error > input { border-color: #f38ba8; }
-input { padding: 3px 4px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 11px; width: 100%; min-width: 0; }
+input, select { padding: 3px 4px; border: 1px solid #444; background: #1e1e2e; color: #cdd6f4; border-radius: 4px; font-size: 11px; width: 100%; min-width: 0; }
 fieldset { border: 1px solid #444; border-radius: 4px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
 fieldset.error { border-color: #f38ba8; }
 legend { font-size: 11px; color: #a6adc8; }

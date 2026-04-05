@@ -27,6 +27,13 @@ export type SinkPoint = {
   y: number
 }
 
+export const PROBLEM_NAMES = ['problem1', 'problem2', 'problem3', 'problem4'] as const
+export type ProblemName = typeof PROBLEM_NAMES[number]
+
+export function hasCandidates(name: string): boolean {
+  return name !== 'problem1'
+}
+
 export type ProblemDraft = {
   name: string
   radiusOfReach: number
@@ -34,6 +41,7 @@ export type ProblemDraft = {
   region: Region
   sink: SinkPoint | null
   candidates: CandidatePoint[]
+  numSensors: number
   mobileNodes: MobileRouteDraft[]
 }
 
@@ -54,7 +62,8 @@ export type ExportedProblem = {
   radius_of_inter: number
   region: Region
   sink: [number, number]
-  candidates: Array<[number, number]>
+  candidates?: Array<[number, number]>
+  num_sensors?: number
   mobile_nodes: ExportedMobileNode[]
 }
 

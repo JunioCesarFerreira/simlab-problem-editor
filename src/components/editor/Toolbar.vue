@@ -5,7 +5,8 @@
         v-for="tool in tools"
         :key="tool.id"
         :class="{ active: activeTool === tool.id }"
-        :title="tool.label"
+        :disabled="tool.id === 'place-candidate' && !candidatesEnabled"
+        :title="tool.id === 'place-candidate' && !candidatesEnabled ? 'Not available for problem1' : tool.label"
         @click="editorStore.setTool(tool.id)"
       >{{ tool.icon }}</button>
     </div>
@@ -25,13 +26,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useEditorStore, type EditorTool } from '../../stores/editorStore'
+import { useProblemStore } from '../../stores/problemStore'
+import { hasCandidates } from '../../models/problem'
 
 defineEmits<{ import: [] }>()
 
 const editorStore = useEditorStore()
+const problemStore = useProblemStore()
 const activeTool = computed(() => editorStore.activeTool)
 const showJson = computed(() => editorStore.showJsonPreview)
 const showConnectivity = computed(() => editorStore.showConnectivity)
+const candidatesEnabled = computed(() => hasCandidates(problemStore.draft.name))
 
 const tools: { id: EditorTool; icon: string; label: string }[] = [
   { id: 'select',            icon: '↖',  label: 'Select / Move  [S]' },
@@ -57,6 +62,7 @@ function loadImage(event: Event) {
 .tool-group { display: flex; gap: 2px; }
 button, .icon-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; cursor: pointer; font-size: 15px; }
 button.active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
+button:disabled { opacity: 0.35; cursor: not-allowed; }
 .icon-btn { cursor: pointer; }
 .spacer { flex: 1; }
 </style>

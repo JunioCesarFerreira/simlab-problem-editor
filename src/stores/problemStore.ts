@@ -7,12 +7,13 @@ import { saveDraft, loadDraft as loadSavedDraft } from '../services/persistence'
 
 function createDefaultDraft(): ProblemDraft {
   return {
-    name: '',
+    name: 'problem2',
     radiusOfReach: 100,
     radiusOfInter: 200,
     region: [-150, -150, 150, 150],
     sink: null,
     candidates: [],
+    numSensors: 1,
     mobileNodes: [],
   }
 }
@@ -36,7 +37,7 @@ export const useProblemStore = defineStore('problem', () => {
     draft.value = incoming
   }
 
-  function updateMeta(fields: Partial<Pick<ProblemDraft, 'name' | 'radiusOfReach' | 'radiusOfInter' | 'region'>>) {
+  function updateMeta(fields: Partial<Pick<ProblemDraft, 'name' | 'radiusOfReach' | 'radiusOfInter' | 'region' | 'numSensors'>>) {
     Object.assign(draft.value, fields)
   }
 
