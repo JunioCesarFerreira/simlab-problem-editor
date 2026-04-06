@@ -63,7 +63,7 @@ export type ExportedProblem = {
   region: Region
   sink: [number, number]
   candidates?: Array<[number, number]>
-  num_sensors?: number
+  number_of_relays?: number
   mobile_nodes: ExportedMobileNode[]
 }
 

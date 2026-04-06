@@ -39,7 +39,7 @@ export function importProblemJson(json: string): ImportResult {
     candidates: hasCandidates(p.name)
       ? (p.candidates ?? []).map((c: [number, number]) => ({ id: nanoid(), x: c[0], y: c[1] }))
       : [],
-    numSensors: !hasCandidates(p.name) ? (p.num_sensors ?? 1) : 1,
+    numSensors: !hasCandidates(p.name) ? (p.number_of_relays ?? 1) : 1,
     mobileNodes: (p.mobile_nodes ?? []).map((m: typeof p.mobile_nodes[0]) => ({
       id: nanoid(),
       name: m.name,

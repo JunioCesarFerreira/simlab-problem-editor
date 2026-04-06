@@ -7,7 +7,7 @@ export function exportProblem(draft: ProblemDraft): ExportedProblemFile {
 
   const candidatesOrSensors = hasCandidates(draft.name)
     ? { candidates: draft.candidates.map(c => [c.x, c.y] as [number, number]) }
-    : { num_sensors: draft.numSensors }
+    : { number_of_relays: draft.numSensors }
 
   return {
     problem: {
