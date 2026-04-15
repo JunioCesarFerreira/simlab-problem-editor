@@ -70,7 +70,7 @@ const ellipseDrag = ref<{ center: [number, number]; current: [number, number] } 
 
 /** Drag-move state for select tool */
 const dragState = ref<{
-  type: 'sink' | 'candidate'
+  type: 'sink' | 'candidate' | 'target'
   id?: string
   downCanvas: [number, number]
   originalPos: [number, number]
@@ -272,6 +272,14 @@ function hitCandidate(cx: number, cy: number): string | null {
   return null
 }
 
+function hitTarget(cx: number, cy: number): string | null {
+  for (const t of problemStore.draft.targets) {
+    const [px, py] = worldToCanvas(t.x, t.y)
+    if (Math.hypot(cx - px, cy - py) <= HIT_PX) return t.id
+  }
+  return null
+}
+
 // ─── Tool UI helpers ──────────────────────────────────────────────────────────
 
 const canvasCursor = computed(() => {
@@ -317,6 +325,7 @@ const toolHint = computed(() => {
     'select': 'Clique para selecionar · arraste para mover · Del para remover · clique direito para remover',
     'place-sink': 'Clique para posicionar o sink  [K]',
     'place-candidate': 'Clique para adicionar candidato  [C]  ·  clique direito para remover',
+    'place-target': 'Clique para adicionar alvo  [T]  ·  clique direito para remover',
   }
   return hints[t] ?? ''
 })
@@ -377,6 +386,7 @@ function draw() {
   drawRegionBorder(ctx)
   drawConnectivityGraph(ctx)
   drawMobileRoutes(ctx)
+  drawTargets(ctx)
   drawCandidates(ctx)
   drawSink(ctx)
   drawPolylinePreview(ctx)
@@ -484,6 +494,26 @@ function drawRegionBorder(ctx: CanvasRenderingContext2D) {
     ctx.fill()
     ctx.strokeStyle = '#181825'
     ctx.lineWidth = 1
+    ctx.stroke()
+  }
+}
+
+function drawTargets(ctx: CanvasRenderingContext2D) {
+  const sel = editorStore.selected
+  for (const t of problemStore.draft.targets) {
+    const [px, py] = worldToCanvas(t.x, t.y)
+    const selected = sel?.type === 'target' && sel.id === t.id
+    const s = selected ? 7 : 5
+    ctx.beginPath()
+    ctx.moveTo(px, py - s)
+    ctx.lineTo(px + s, py)
+    ctx.lineTo(px, py + s)
+    ctx.lineTo(px - s, py)
+    ctx.closePath()
+    ctx.fillStyle = '#f9e2af'
+    ctx.fill()
+    ctx.strokeStyle = selected ? '#cba6f7' : '#1e1e2e'
+    ctx.lineWidth = selected ? 2.5 : 1
     ctx.stroke()
   }
 }
@@ -937,6 +967,13 @@ function handleMouseDown(e: MouseEvent) {
       dragState.value = { type: 'candidate', id: cid, downCanvas: [cx, cy], originalPos: [c.x, c.y], moved: false }
       return
     }
+    const tid = hitTarget(cx, cy)
+    if (tid) {
+      const t = problemStore.draft.targets.find(t => t.id === tid)!
+      editorStore.setSelected({ type: 'target', id: tid })
+      dragState.value = { type: 'target', id: tid, downCanvas: [cx, cy], originalPos: [t.x, t.y], moved: false }
+      return
+    }
     editorStore.setSelected(null)
     dragState.value = null
   }
@@ -980,6 +1017,7 @@ function handleMouseMove(e: MouseEvent) {
       const ny = snap(ds.originalPos[1] + dy)
       if (ds.type === 'sink') problemStore.setSink({ x: nx, y: ny })
       else if (ds.type === 'candidate' && ds.id) problemStore.moveCandidate(ds.id, nx, ny)
+      else if (ds.type === 'target' && ds.id) problemStore.moveTarget(ds.id, nx, ny)
     }
   }
 
@@ -1051,6 +1089,8 @@ function handleMouseUp(e: MouseEvent) {
     problemStore.setSink({ x: snap(wx), y: snap(wy) })
   } else if (tool === 'place-candidate') {
     problemStore.addCandidate(snap(wx), snap(wy))
+  } else if (tool === 'place-target' && problemStore.draft.name === 'problem3') {
+    problemStore.addTarget(snap(wx), snap(wy))
   } else if (tool === 'draw-line' && editorStore.activeNodeId) {
     const pt: [number, number] = [snap(wx), snap(wy)]
     const prev = polylinePoints.value
@@ -1093,6 +1133,12 @@ function handleRightClick(e: MouseEvent) {
     editorStore.setSelected(null)
     return
   }
+  const tid = hitTarget(cx, cy)
+  if (tid) {
+    problemStore.removeTarget(tid)
+    editorStore.setSelected(null)
+    return
+  }
   if (hitSink(cx, cy)) {
     problemStore.setSink(null)
     editorStore.setSelected(null)
@@ -1119,20 +1165,26 @@ function handleKey(e: KeyboardEvent) {
     const sel = editorStore.selected
     if (sel?.type === 'sink') { problemStore.setSink(null); editorStore.setSelected(null) }
     else if (sel?.type === 'candidate') { problemStore.removeCandidate(sel.id); editorStore.setSelected(null) }
+    else if (sel?.type === 'target') { problemStore.removeTarget(sel.id); editorStore.setSelected(null) }
     e.preventDefault()
   }
 
   if (!e.ctrlKey && !e.metaKey && !isInputTarget(e)) {
     const map: Record<string, typeof editorStore.activeTool> = {
-      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
+      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 't': 'place-target', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
     }
     const t = map[e.key.toLowerCase()]
     if (t) {
-      editorStore.setTool(t)
-      polylinePoints.value = []
-      ellipseDrag.value = null
-      measureState.value = null
-      cancelScaleCalibration()
+      const name = problemStore.draft.name
+      if (t === 'place-candidate' && name === 'problem1') { /* disabled for problem1 */ }
+      else if (t === 'place-target' && name !== 'problem3') { /* only for problem3 */ }
+      else {
+        editorStore.setTool(t)
+        polylinePoints.value = []
+        ellipseDrag.value = null
+        measureState.value = null
+        cancelScaleCalibration()
+      }
     }
     if (e.key.toLowerCase() === 'g') {
       editorStore.toggleConnectivity()

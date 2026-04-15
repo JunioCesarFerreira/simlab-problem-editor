@@ -11,6 +11,16 @@
       Number of Sensors
       <input v-model.number="numSensors" type="number" min="1" />
     </label>
+    <template v-if="name === 'problem3'">
+      <label>
+        Radius of Cover
+        <input v-model.number="radiusOfCover" type="number" min="1" />
+      </label>
+      <label>
+        K-Coverage Required
+        <input v-model.number="kRequired" type="number" min="1" />
+      </label>
+    </template>
     <label :class="{ error: hasError('radius_of_reach') }">
       Radius of Reach
       <input v-model.number="radiusOfReach" type="number" min="1" />
@@ -57,6 +67,14 @@ const name = computed({
 const numSensors = computed({
   get: () => problemStore.draft.numSensors,
   set: v => problemStore.updateMeta({ numSensors: v }),
+})
+const radiusOfCover = computed({
+  get: () => problemStore.draft.radiusOfCover,
+  set: v => problemStore.updateMeta({ radiusOfCover: v }),
+})
+const kRequired = computed({
+  get: () => problemStore.draft.kRequired,
+  set: v => problemStore.updateMeta({ kRequired: v }),
 })
 const radiusOfReach = computed({
   get: () => problemStore.draft.radiusOfReach,

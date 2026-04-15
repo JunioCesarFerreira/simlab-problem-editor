@@ -7,6 +7,10 @@
     <div class="tab-content">
       <template v-if="tab === 'problem'">
         <ProblemForm />
+        <template v-if="showTargets">
+          <div class="divider" />
+          <TargetList />
+        </template>
         <template v-if="showCandidates">
           <div class="divider" />
           <CandidateList />
@@ -27,14 +31,16 @@ import { ref, computed } from 'vue'
 import ProblemForm from '../problem/ProblemForm.vue'
 import CalibrationPanel from './CalibrationPanel.vue'
 import CandidateList from '../problem/CandidateList.vue'
+import TargetList from '../problem/TargetList.vue'
 import MobileNodeList from '../problem/MobileNodeList.vue'
 import MobileNodeEditor from '../problem/MobileNodeEditor.vue'
 import { useProblemStore } from '../../stores/problemStore'
-import { hasCandidates } from '../../models/problem'
+import { hasCandidates, hasTargets } from '../../models/problem'
 
 const tab = ref<'problem' | 'nodes'>('problem')
 const problemStore = useProblemStore()
 const showCandidates = computed(() => hasCandidates(problemStore.draft.name))
+const showTargets = computed(() => hasTargets(problemStore.draft.name))
 </script>
 
 <style scoped>

@@ -22,6 +22,12 @@ export type CandidatePoint = {
   y: number
 }
 
+export type TargetPoint = {
+  id: string
+  x: number
+  y: number
+}
+
 export type SinkPoint = {
   x: number
   y: number
@@ -34,13 +40,20 @@ export function hasCandidates(name: string): boolean {
   return name !== 'problem1'
 }
 
+export function hasTargets(name: string): boolean {
+  return name === 'problem3'
+}
+
 export type ProblemDraft = {
   name: string
   radiusOfReach: number
   radiusOfInter: number
+  radiusOfCover: number
+  kRequired: number
   region: Region
   sink: SinkPoint | null
   candidates: CandidatePoint[]
+  targets: TargetPoint[]
   numSensors: number
   mobileNodes: MobileRouteDraft[]
 }
@@ -60,8 +73,11 @@ export type ExportedProblem = {
   name: string
   radius_of_reach: number
   radius_of_inter: number
+  radius_of_cover?: number
   region: Region
   sink: [number, number]
+  k_required?: number
+  targets?: Array<[number, number]>
   candidates?: Array<[number, number]>
   number_of_relays?: number
   mobile_nodes: ExportedMobileNode[]

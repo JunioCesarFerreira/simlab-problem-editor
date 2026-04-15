@@ -6,7 +6,7 @@
         :key="tool.id"
         :class="{ active: activeTool === tool.id }"
         :disabled="tool.id === 'place-candidate' && !candidatesEnabled"
-        :title="tool.id === 'place-candidate' && !candidatesEnabled ? 'Not available for problem1' : tool.label"
+        :title="tool.label"
         @click="editorStore.setTool(tool.id)"
       >{{ tool.icon }}</button>
     </div>
@@ -27,7 +27,7 @@
 import { computed } from 'vue'
 import { useEditorStore, type EditorTool } from '../../stores/editorStore'
 import { useProblemStore } from '../../stores/problemStore'
-import { hasCandidates } from '../../models/problem'
+import { hasCandidates, hasTargets } from '../../models/problem'
 
 defineEmits<{ import: [] }>()
 
@@ -37,16 +37,19 @@ const activeTool = computed(() => editorStore.activeTool)
 const showJson = computed(() => editorStore.showJsonPreview)
 const showConnectivity = computed(() => editorStore.showConnectivity)
 const candidatesEnabled = computed(() => hasCandidates(problemStore.draft.name))
+const targetsEnabled = computed(() => hasTargets(problemStore.draft.name))
 
-const tools: { id: EditorTool; icon: string; label: string }[] = [
-  { id: 'select',            icon: '↖',  label: 'Select / Move  [S]' },
-  { id: 'place-sink',        icon: '⊕',  label: 'Place Sink  [K]' },
-  { id: 'place-candidate',   icon: '●',  label: 'Place Candidate  [C]' },
-  { id: 'draw-line',         icon: '╱',  label: 'Draw Polyline  [L] — right-click/Esc to finish' },
-  { id: 'draw-ellipse',      icon: '○',  label: 'Draw Ellipse  [E] — drag to define radii' },
-  { id: 'measure',           icon: '📏', label: 'Tape Measure  [M] — click-drag to measure distance' },
+const allTools: { id: EditorTool; icon: string; label: string; visibleWhen?: () => boolean }[] = [
+  { id: 'select',           icon: '↖',  label: 'Select / Move  [S]' },
+  { id: 'place-sink',       icon: '⊕',  label: 'Place Sink  [K]' },
+  { id: 'place-candidate',  icon: '●',  label: 'Place Candidate  [C]' },
+  { id: 'place-target',     icon: '◇',  label: 'Place Target  [T]', visibleWhen: () => targetsEnabled.value },
+  { id: 'draw-line',        icon: '╱',  label: 'Draw Polyline  [L] — right-click/Esc to finish' },
+  { id: 'draw-ellipse',     icon: '○',  label: 'Draw Ellipse  [E] — drag to define radii' },
+  { id: 'measure',          icon: '📏', label: 'Tape Measure  [M] — click-drag to measure distance' },
   { id: 'scale-calibrate',  icon: '⚖',  label: 'Scale Calibration  [R] — drag a known segment then enter its real length' },
 ]
+const tools = computed(() => allTools.filter(t => !t.visibleWhen || t.visibleWhen()))
 
 function loadImage(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]

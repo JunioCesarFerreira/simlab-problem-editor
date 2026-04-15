@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import type { ProblemDraft, ExportedProblemFile, DraftSegment } from '../models/problem'
-import { hasCandidates } from '../models/problem'
+import { hasCandidates, hasTargets } from '../models/problem'
 
 export type ImportResult =
   | { ok: true; draft: ProblemDraft }
@@ -34,10 +34,15 @@ export function importProblemJson(json: string): ImportResult {
     name: p.name,
     radiusOfReach: p.radius_of_reach,
     radiusOfInter: p.radius_of_inter,
+    radiusOfCover: p.radius_of_cover ?? 90,
+    kRequired: p.k_required ?? 1,
     region: p.region as [number, number, number, number],
     sink: { x: p.sink[0], y: p.sink[1] },
     candidates: hasCandidates(p.name)
       ? (p.candidates ?? []).map((c: [number, number]) => ({ id: nanoid(), x: c[0], y: c[1] }))
+      : [],
+    targets: hasTargets(p.name)
+      ? (p.targets ?? []).map((t: [number, number]) => ({ id: nanoid(), x: t[0], y: t[1] }))
       : [],
     numSensors: !hasCandidates(p.name) ? (p.number_of_relays ?? 1) : 1,
     mobileNodes: (p.mobile_nodes ?? []).map((m: typeof p.mobile_nodes[0]) => ({

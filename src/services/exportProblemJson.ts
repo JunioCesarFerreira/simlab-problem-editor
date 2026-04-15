@@ -1,5 +1,5 @@
 import type { ProblemDraft, ExportedProblemFile } from '../models/problem'
-import { hasCandidates } from '../models/problem'
+import { hasCandidates, hasTargets } from '../models/problem'
 import { buildSegmentExpressions } from './segmentExpressionBuilder'
 
 export function exportProblem(draft: ProblemDraft): ExportedProblemFile {
@@ -9,12 +9,21 @@ export function exportProblem(draft: ProblemDraft): ExportedProblemFile {
     ? { candidates: draft.candidates.map(c => [c.x, c.y] as [number, number]) }
     : { number_of_relays: draft.numSensors }
 
+  const targetFields = hasTargets(draft.name)
+    ? {
+        radius_of_cover: draft.radiusOfCover,
+        k_required: draft.kRequired,
+        targets: draft.targets.map(t => [t.x, t.y] as [number, number]),
+      }
+    : {}
+
   return {
     problem: {
       name: draft.name,
       radius_of_reach: draft.radiusOfReach,
       radius_of_inter: draft.radiusOfInter,
       region: draft.region,
+      ...targetFields,
       sink: [draft.sink.x, draft.sink.y],
       ...candidatesOrSensors,
       mobile_nodes: draft.mobileNodes.map(m => ({

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { nanoid } from 'nanoid'
-import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment, Region } from '../models/problem'
+import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment, Region, TargetPoint } from '../models/problem'
 export type { ProblemDraft }
 import { saveDraft, loadDraft as loadSavedDraft } from '../services/persistence'
 
@@ -10,9 +10,12 @@ function createDefaultDraft(): ProblemDraft {
     name: 'problem2',
     radiusOfReach: 100,
     radiusOfInter: 200,
+    radiusOfCover: 90,
+    kRequired: 1,
     region: [-150, -150, 150, 150],
     sink: null,
     candidates: [],
+    targets: [],
     numSensors: 1,
     mobileNodes: [],
   }
@@ -20,7 +23,8 @@ function createDefaultDraft(): ProblemDraft {
 
 export const useProblemStore = defineStore('problem', () => {
   const saved = loadSavedDraft()
-  const draft = ref<ProblemDraft>(saved ?? createDefaultDraft())
+  // Merge with defaults so that new fields added after a saved draft are initialized
+  const draft = ref<ProblemDraft>(saved ? { ...createDefaultDraft(), ...saved } : createDefaultDraft())
 
   // Auto-save on every change (debounced to 500ms)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -37,7 +41,7 @@ export const useProblemStore = defineStore('problem', () => {
     draft.value = incoming
   }
 
-  function updateMeta(fields: Partial<Pick<ProblemDraft, 'name' | 'radiusOfReach' | 'radiusOfInter' | 'region' | 'numSensors'>>) {
+  function updateMeta(fields: Partial<Pick<ProblemDraft, 'name' | 'radiusOfReach' | 'radiusOfInter' | 'radiusOfCover' | 'kRequired' | 'region' | 'numSensors'>>) {
     Object.assign(draft.value, fields)
   }
 
@@ -56,6 +60,19 @@ export const useProblemStore = defineStore('problem', () => {
   function moveCandidate(id: string, x: number, y: number) {
     const c = draft.value.candidates.find(c => c.id === id)
     if (c) { c.x = x; c.y = y }
+  }
+
+  function addTarget(x: number, y: number) {
+    draft.value.targets.push({ id: nanoid(), x, y })
+  }
+
+  function removeTarget(id: string) {
+    draft.value.targets = draft.value.targets.filter(t => t.id !== id)
+  }
+
+  function moveTarget(id: string, x: number, y: number) {
+    const t = draft.value.targets.find(t => t.id === id)
+    if (t) { t.x = x; t.y = y }
   }
 
   function addMobileNode(): string {
@@ -112,6 +129,7 @@ export const useProblemStore = defineStore('problem', () => {
       region: [d.region[0]*f, d.region[1]*f, d.region[2]*f, d.region[3]*f] as Region,
       sink: d.sink ? { x: d.sink.x*f, y: d.sink.y*f } : null,
       candidates: d.candidates.map(c => ({ ...c, x: c.x*f, y: c.y*f })),
+      targets: d.targets.map((t: TargetPoint) => ({ ...t, x: t.x*f, y: t.y*f })),
       mobileNodes: d.mobileNodes.map(node => ({
         ...node,
         segments: node.segments.map((seg): DraftSegment => {
@@ -135,6 +153,9 @@ export const useProblemStore = defineStore('problem', () => {
     addCandidate,
     removeCandidate,
     moveCandidate,
+    addTarget,
+    removeTarget,
+    moveTarget,
     addMobileNode,
     removeMobileNode,
     updateMobileNode,
