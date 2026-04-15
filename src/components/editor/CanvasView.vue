@@ -298,6 +298,7 @@ const canvasCursor = computed(() => {
   const t = editorStore.activeTool
   if (t === 'select') return dragState.value?.moved ? 'grabbing' : 'default'
   if (t === 'measure') return 'crosshair'
+  if (t === 'chromosome-pick') return 'pointer'
   return 'crosshair'
 })
 
@@ -344,6 +345,19 @@ const toolHint = computed(() => {
     const lim = problemStore.draft.numSensors
     if (n >= lim) return `⚠ Limite atingido (${n}/${lim}) — ajuste "Number of Sensors"`
     return `Clique para adicionar relay  [N]  ·  ${n}/${lim}  ·  clique direito para remover`
+  }
+  if (t === 'chromosome-pick') {
+    const name = problemStore.draft.name
+    const chrom = problemStore.draft.chromosome
+    if (name === 'problem2' || name === 'problem3') {
+      const n = (chrom && (chrom.kind === 'problem2' || chrom.kind === 'problem3')) ? chrom.mask.filter(b => b === 1).length : 0
+      return `Clique no candidato para ativar/desativar  [X]  ·  ${n} ativo(s)  ·  clique direito desativa`
+    }
+    if (name === 'problem4') {
+      const n = (chrom && chrom.kind === 'problem4') ? chrom.route.length : 0
+      return `Clique no candidato para adicionar à rota  [X]  ·  ${n} stop(s)  ·  clique direito remove último`
+    }
+    return 'Selecione um problema p2/p3/p4 para usar esta ferramenta'
   }
   const hints: Record<string, string> = {
     'select': 'Clique para selecionar · arraste para mover · Del para remover · clique direito para remover',
@@ -409,6 +423,7 @@ function draw() {
   drawGrid(ctx)
   drawRegionBorder(ctx)
   drawConnectivityGraph(ctx)
+  drawChromosomeConnectivityGraph(ctx)
   drawP4Route(ctx)
   drawMobileRoutes(ctx)
   drawTargets(ctx)
@@ -421,19 +436,13 @@ function draw() {
   drawScaleCalibrate(ctx)
 }
 
-function drawConnectivityGraph(ctx: CanvasRenderingContext2D) {
-  if (!editorStore.showConnectivity) return
+type NetNode = { x: number; y: number }
 
-  const { radiusOfReach } = problemStore.draft
-
-  type NetNode = { x: number; y: number }
-  const nodes: NetNode[] = []
-  if (problemStore.draft.sink) nodes.push(problemStore.draft.sink)
-  for (const c of problemStore.draft.candidates) nodes.push({ x: c.x, y: c.y })
+function drawReachGraph(ctx: CanvasRenderingContext2D, nodes: NetNode[], color: string, lineWidth: number) {
   if (nodes.length === 0) return
-
-  ctx.strokeStyle = '#1a3a5c'
-  ctx.lineWidth = 1.5
+  const { radiusOfReach } = problemStore.draft
+  ctx.strokeStyle = color
+  ctx.lineWidth = lineWidth
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const d = Math.hypot(nodes[j].x - nodes[i].x, nodes[j].y - nodes[i].y)
@@ -444,6 +453,47 @@ function drawConnectivityGraph(ctx: CanvasRenderingContext2D) {
       }
     }
   }
+}
+
+function drawConnectivityGraph(ctx: CanvasRenderingContext2D) {
+  if (!editorStore.showConnectivity) return
+  const nodes: NetNode[] = []
+  if (problemStore.draft.sink) nodes.push(problemStore.draft.sink)
+  for (const c of problemStore.draft.candidates) nodes.push({ x: c.x, y: c.y })
+  drawReachGraph(ctx, nodes, '#1a3a5c', 1.5)
+}
+
+/**
+ * Reach graph over nodes actually "deployed" by the current chromosome:
+ *   p1 → relays; p2/p3 → candidates where mask[i]===1; p4 → candidates on route.
+ * The sink is always included (it is part of the problem, not the solution).
+ * Drawn with a distinct color so it does not collide with the base connectivity.
+ */
+function drawChromosomeConnectivityGraph(ctx: CanvasRenderingContext2D) {
+  if (!editorStore.showChromosomeConnectivity) return
+  const chrom = problemStore.draft.chromosome
+  if (!chrom) return
+  const nodes: NetNode[] = []
+  if (problemStore.draft.sink) nodes.push(problemStore.draft.sink)
+
+  if (chrom.kind === 'problem1') {
+    for (const r of chrom.relays) nodes.push({ x: r.x, y: r.y })
+  } else if (chrom.kind === 'problem2' || chrom.kind === 'problem3') {
+    const cands = problemStore.draft.candidates
+    chrom.mask.forEach((bit, i) => {
+      if (bit === 1 && i < cands.length) nodes.push({ x: cands[i].x, y: cands[i].y })
+    })
+  } else if (chrom.kind === 'problem4') {
+    const cands = problemStore.draft.candidates
+    // Dedupe indices — repeated stops don't add new network nodes.
+    const seen = new Set<number>()
+    for (const idx of chrom.route) {
+      if (idx < 0 || idx >= cands.length || seen.has(idx)) continue
+      seen.add(idx)
+      nodes.push({ x: cands[idx].x, y: cands[idx].y })
+    }
+  }
+  drawReachGraph(ctx, nodes, '#cba6f7', 2)
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
@@ -1027,7 +1077,7 @@ function drawScaleCalibrate(ctx: CanvasRenderingContext2D) {
 watch(
   [() => problemStore.draft, canvasW, canvasH, hover, polylinePoints, ellipseDrag,
     () => editorStore.selected, () => editorStore.imageWorldBounds,
-    () => editorStore.showConnectivity, hoveredHandle, regionDrag,
+    () => editorStore.showConnectivity, () => editorStore.showChromosomeConnectivity, hoveredHandle, regionDrag,
     measureState, scaleCalibrateState],
   () => draw(),
   { deep: true }
@@ -1208,6 +1258,18 @@ function handleMouseUp(e: MouseEvent) {
   } else if (tool === 'place-relay' && problemStore.draft.name === 'problem1') {
     // Respect the number_of_relays limit; silently no-op when full.
     problemStore.addRelay(snap(wx), snap(wy))
+  } else if (tool === 'chromosome-pick') {
+    const cid = hitCandidate(cx, cy)
+    if (cid) {
+      const idx = problemStore.draft.candidates.findIndex(c => c.id === cid)
+      if (idx < 0) return
+      const name = problemStore.draft.name
+      if (name === 'problem2' || name === 'problem3') {
+        problemStore.toggleMaskAt(idx)
+      } else if (name === 'problem4') {
+        problemStore.appendRouteStop(idx)
+      }
+    }
   } else if (tool === 'draw-line' && editorStore.activeNodeId) {
     const pt: [number, number] = [snap(wx), snap(wy)]
     const prev = polylinePoints.value
@@ -1240,6 +1302,21 @@ function handleRightClick(e: MouseEvent) {
 
   if (tool === 'draw-line' && polylinePoints.value.length > 0) {
     polylinePoints.value = []
+    return
+  }
+
+  if (tool === 'chromosome-pick') {
+    const cid = hitCandidate(cx, cy)
+    if (!cid) return
+    const idx = problemStore.draft.candidates.findIndex(c => c.id === cid)
+    if (idx < 0) return
+    const name = problemStore.draft.name
+    if (name === 'problem2' || name === 'problem3') {
+      // Right-click always deactivates, regardless of current state.
+      problemStore.setMaskAt(idx, 0)
+    } else if (name === 'problem4') {
+      problemStore.removeLastRouteStop(idx)
+    }
     return
   }
 
@@ -1295,7 +1372,7 @@ function handleKey(e: KeyboardEvent) {
 
   if (!e.ctrlKey && !e.metaKey && !isInputTarget(e)) {
     const map: Record<string, typeof editorStore.activeTool> = {
-      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 't': 'place-target', 'n': 'place-relay', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
+      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 't': 'place-target', 'n': 'place-relay', 'x': 'chromosome-pick', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
     }
     const t = map[e.key.toLowerCase()]
     if (t) {
@@ -1303,6 +1380,7 @@ function handleKey(e: KeyboardEvent) {
       if (t === 'place-candidate' && name === 'problem1') { /* disabled for problem1 */ }
       else if (t === 'place-target' && name !== 'problem3') { /* only for problem3 */ }
       else if (t === 'place-relay' && name !== 'problem1') { /* only for problem1 */ }
+      else if (t === 'chromosome-pick' && name === 'problem1') { /* only for p2/p3/p4 */ }
       else {
         editorStore.setTool(t)
         polylinePoints.value = []
@@ -1313,6 +1391,9 @@ function handleKey(e: KeyboardEvent) {
     }
     if (e.key.toLowerCase() === 'g') {
       editorStore.toggleConnectivity()
+    }
+    if (e.key.toLowerCase() === 'h') {
+      editorStore.toggleChromosomeConnectivity()
     }
   }
 }

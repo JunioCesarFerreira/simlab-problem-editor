@@ -204,6 +204,7 @@ export const useProblemStore = defineStore('problem', () => {
   }
 
   function toggleMaskAt(index: number) {
+    ensureChromosome()
     const chrom = draft.value.chromosome
     if (!chrom || (chrom.kind !== 'problem2' && chrom.kind !== 'problem3')) return
     if (index < 0 || index >= chrom.mask.length) return
@@ -251,6 +252,26 @@ export const useProblemStore = defineStore('problem', () => {
     chrom.sojournTimes = times
   }
 
+  function appendRouteStop(candidateIndex: number) {
+    ensureChromosome()
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem4') return
+    chrom.route.push(candidateIndex)
+    chrom.sojournTimes.push(0)
+  }
+
+  function removeLastRouteStop(candidateIndex?: number) {
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem4') return
+    // Remove the last occurrence of the given index (or the last stop if undefined).
+    const target = candidateIndex === undefined
+      ? chrom.route.length - 1
+      : chrom.route.lastIndexOf(candidateIndex)
+    if (target < 0) return
+    chrom.route.splice(target, 1)
+    chrom.sojournTimes.splice(target, 1)
+  }
+
   return {
     draft,
     reset,
@@ -280,5 +301,7 @@ export const useProblemStore = defineStore('problem', () => {
     removeRelay,
     setRoute,
     setSojournTimes,
+    appendRouteStop,
+    removeLastRouteStop,
   }
 })

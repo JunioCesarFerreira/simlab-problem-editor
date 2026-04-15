@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'place-target' | 'place-relay' | 'draw-line' | 'draw-ellipse' | 'measure' | 'scale-calibrate'
+export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'place-target' | 'place-relay' | 'chromosome-pick' | 'draw-line' | 'draw-ellipse' | 'measure' | 'scale-calibrate'
 
 export type SelectedElement =
   | { type: 'sink' }
@@ -23,6 +23,7 @@ export const useEditorStore = defineStore('editor', () => {
    */
   const imageWorldBounds = ref<[number, number, number, number] | null>(null)
   const showConnectivity = ref(false)
+  const showChromosomeConnectivity = ref(false)
 
   function setTool(tool: EditorTool) {
     activeTool.value = tool
@@ -42,6 +43,9 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function toggleConnectivity() { showConnectivity.value = !showConnectivity.value }
+  function toggleChromosomeConnectivity() {
+    showChromosomeConnectivity.value = !showChromosomeConnectivity.value
+  }
 
   return {
     activeTool,
@@ -51,6 +55,7 @@ export const useEditorStore = defineStore('editor', () => {
     selected,
     imageWorldBounds,
     showConnectivity,
+    showChromosomeConnectivity,
     setTool,
     setBackground,
     setActiveNode,
@@ -58,5 +63,6 @@ export const useEditorStore = defineStore('editor', () => {
     setSelected,
     setImageWorldBounds,
     toggleConnectivity,
+    toggleChromosomeConnectivity,
   }
 })

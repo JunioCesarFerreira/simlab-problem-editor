@@ -18,7 +18,8 @@
     </div>
     <div class="spacer" />
     <button title="Import JSON" @click="$emit('import')">⬆</button>
-    <button :class="{ active: showConnectivity }" title="Connectivity Graph  [G] — show/hide reach radius and edges" @click="editorStore.toggleConnectivity()">⬡</button>
+    <button :class="{ active: showConnectivity }" title="Connectivity Graph  [G] — sink + all candidates within reach" @click="editorStore.toggleConnectivity()">⬡</button>
+    <button :class="{ active: showChromosomeConnectivity }" class="chrom" title="Chromosome Connectivity  [H] — sink + nodes active in current chromosome" @click="editorStore.toggleChromosomeConnectivity()">⬢</button>
     <button :class="{ active: showJson }" title="JSON Preview  [{ }]" @click="editorStore.toggleJsonPreview()">{ }</button>
   </div>
 </template>
@@ -36,9 +37,11 @@ const problemStore = useProblemStore()
 const activeTool = computed(() => editorStore.activeTool)
 const showJson = computed(() => editorStore.showJsonPreview)
 const showConnectivity = computed(() => editorStore.showConnectivity)
+const showChromosomeConnectivity = computed(() => editorStore.showChromosomeConnectivity)
 const candidatesEnabled = computed(() => hasCandidates(problemStore.draft.name))
 const targetsEnabled = computed(() => hasTargets(problemStore.draft.name))
 const relaysEnabled = computed(() => problemStore.draft.name === 'problem1')
+const chromosomePickEnabled = computed(() => ['problem2', 'problem3', 'problem4'].includes(problemStore.draft.name))
 
 const allTools: { id: EditorTool; icon: string; label: string; visibleWhen?: () => boolean }[] = [
   { id: 'select',           icon: '↖',  label: 'Select / Move  [S]' },
@@ -46,6 +49,7 @@ const allTools: { id: EditorTool; icon: string; label: string; visibleWhen?: () 
   { id: 'place-candidate',  icon: '●',  label: 'Place Candidate  [C]' },
   { id: 'place-target',     icon: '◇',  label: 'Place Target  [T]', visibleWhen: () => targetsEnabled.value },
   { id: 'place-relay',      icon: '⧫',  label: 'Place Relay  [N] — problem1 chromosome', visibleWhen: () => relaysEnabled.value },
+  { id: 'chromosome-pick',  icon: '▣',  label: 'Chromosome Pick  [X] — click candidates to toggle mask (p2/p3) or append route stop (p4)', visibleWhen: () => chromosomePickEnabled.value },
   { id: 'draw-line',        icon: '╱',  label: 'Draw Polyline  [L] — right-click/Esc to finish' },
   { id: 'draw-ellipse',     icon: '○',  label: 'Draw Ellipse  [E] — drag to define radii' },
   { id: 'measure',          icon: '📏', label: 'Tape Measure  [M] — click-drag to measure distance' },
@@ -67,6 +71,7 @@ function loadImage(event: Event) {
 .tool-group { display: flex; gap: 2px; }
 button, .icon-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; cursor: pointer; font-size: 15px; }
 button.active { background: #89b4fa; color: #1e1e2e; border-color: #89b4fa; }
+button.chrom.active { background: #cba6f7; border-color: #cba6f7; }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 .icon-btn { cursor: pointer; }
 .spacer { flex: 1; }
