@@ -23,6 +23,7 @@ With **simlab-problem-editor**, you can:
 - define the problem region
 - place the sink node
 - place and edit candidate fixed-node positions
+- place and edit target points for coverage-oriented instances
 - design mobile-node trajectories visually
 - inspect communication reach through a connectivity overlay
 - measure distances directly on the scene
@@ -46,6 +47,9 @@ The exported output is intended to be consumed by SimLab’s optimization and si
 
 - **Candidate-node placement**  
   Add, move, and remove candidate positions for fixed communication nodes.
+
+- **Target placement for coverage scenarios**  
+  Add, move, and remove target points when authoring `problem3` instances.
 
 - **Mobile trajectory authoring**  
   Draw trajectories for mobile nodes using:
@@ -74,9 +78,10 @@ The exported output is intended to be consumed by SimLab’s optimization and si
 3. Define the scenario region.
 4. Place the sink node.
 5. Add candidate fixed-node positions.
-6. Draw mobile-node trajectories.
-7. Inspect connectivity and distances.
-8. Export the generated JSON instance.
+6. Add target points when using a coverage-oriented problem type.
+7. Draw mobile-node trajectories.
+8. Inspect connectivity and distances.
+9. Export the generated JSON instance.
 
 This workflow makes it easier to construct reproducible WSN scenarios without manually deriving coordinates and path expressions.
 
@@ -87,6 +92,7 @@ This workflow makes it easier to construct reproducible WSN scenarios without ma
 | `S` | Select tool |
 | `K` | Place sink |
 | `C` | Place candidate |
+| `T` | Place target (`problem3`) |
 | `L` | Draw line / polyline segment |
 | `E` | Draw ellipse |
 | `M` | Measure distance |
@@ -94,22 +100,32 @@ This workflow makes it easier to construct reproducible WSN scenarios without ma
 | `G` | Toggle connectivity graph |
 | `Del` | Remove selected element |
 | `Esc` | Cancel current drawing |
-| `Scroll` | Zoom |
-| `Middle-drag` | Pan |
 
 ## Output Format
 
-The editor exports JSON following the SimLab problem schema:
+The editor exports JSON following the SimLab problem schema. The exact fields depend on the selected problem type:
+
+| Problem type | Position fields |
+| ------------ | --------------- |
+| `problem1` | `number_of_relays` |
+| `problem2` | `candidates` |
+| `problem3` | `candidates`, `targets`, `radius_of_cover`, `k_required` |
+| `problem4` | `candidates` |
+
+Example:
 
 ```json
 {
   "problem": {
-    "name": "example",
+    "name": "problem3",
     "radius_of_reach": 100,
     "radius_of_inter": 200,
+    "radius_of_cover": 90,
+    "k_required": 1,
     "region": [-150, -150, 150, 150],
     "sink": [0, 0],
-    "candidates": [[x1, y1], [x2, y2]],
+    "candidates": [[-50, 0], [50, 0]],
+    "targets": [[0, 75]],
     "mobile_nodes": [
       {
         "name": "node1",
@@ -128,13 +144,14 @@ The editor exports JSON following the SimLab problem schema:
     ]
   }
 }
-````
+```
 
 ### Notes on path expressions
 
 * Each path segment is represented parametrically with `t ∈ [0, 1]`.
 * Expressions may use `np.cos`, `np.sin`, and `np.pi`.
 * The generated format is compatible with NumPy-based processing used in SimLab.
+* Imported path segments are preserved as custom parametric expressions.
 
 ## Technology Stack
 

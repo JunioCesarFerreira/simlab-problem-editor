@@ -23,6 +23,7 @@ Com o **simlab-problem-editor**, você pode:
 - definir a região do problema
 - posicionar o nó sink
 - posicionar e editar candidatos a nós fixos
+- posicionar e editar alvos em instâncias orientadas a cobertura
 - projetar visualmente trajetórias de nós móveis
 - inspecionar o alcance de comunicação por meio de uma sobreposição de conectividade
 - medir distâncias diretamente na cena
@@ -46,6 +47,9 @@ A saída exportada foi pensada para ser consumida pelos componentes de otimizaç
 
 - **Posicionamento de nós candidatos**  
   Adicione, mova e remova posições candidatas para nós fixos de comunicação.
+
+- **Posicionamento de alvos para cenários de cobertura**  
+  Adicione, mova e remova pontos-alvo ao criar instâncias `problem3`.
 
 - **Construção de trajetórias móveis**  
   Desenhe trajetórias para nós móveis usando:
@@ -74,9 +78,10 @@ A saída exportada foi pensada para ser consumida pelos componentes de otimizaç
 3. Defina a região do cenário.
 4. Posicione o nó sink.
 5. Adicione as posições candidatas de nós fixos.
-6. Desenhe as trajetórias dos nós móveis.
-7. Inspecione conectividade e distâncias.
-8. Exporte a instância JSON gerada.
+6. Adicione pontos-alvo ao usar um tipo de problema orientado a cobertura.
+7. Desenhe as trajetórias dos nós móveis.
+8. Inspecione conectividade e distâncias.
+9. Exporte a instância JSON gerada.
 
 Esse fluxo facilita a construção de cenários reprodutíveis de WSN sem a necessidade de derivar manualmente coordenadas e expressões de trajetória.
 
@@ -87,6 +92,7 @@ Esse fluxo facilita a construção de cenários reprodutíveis de WSN sem a nece
 | `S` | Ferramenta de seleção |
 | `K` | Posicionar sink |
 | `C` | Posicionar candidato |
+| `T` | Posicionar alvo (`problem3`) |
 | `L` | Desenhar linha / segmento polilinear |
 | `E` | Desenhar elipse |
 | `M` | Medir distância |
@@ -94,22 +100,32 @@ Esse fluxo facilita a construção de cenários reprodutíveis de WSN sem a nece
 | `G` | Alternar visualização do grafo de conectividade |
 | `Del` | Remover elemento selecionado |
 | `Esc` | Cancelar desenho atual |
-| `Scroll` | Zoom |
-| `Middle-drag` | Pan |
 
 ## Formato de Saída
 
-O editor exporta JSON seguindo o esquema de problema do SimLab:
+O editor exporta JSON seguindo o esquema de problema do SimLab. Os campos exatos dependem do tipo de problema selecionado:
+
+| Tipo de problema | Campos de posicionamento |
+| ---------------- | ------------------------ |
+| `problem1` | `number_of_relays` |
+| `problem2` | `candidates` |
+| `problem3` | `candidates`, `targets`, `radius_of_cover`, `k_required` |
+| `problem4` | `candidates` |
+
+Exemplo:
 
 ```json
 {
   "problem": {
-    "name": "example",
+    "name": "problem3",
     "radius_of_reach": 100,
     "radius_of_inter": 200,
+    "radius_of_cover": 90,
+    "k_required": 1,
     "region": [-150, -150, 150, 150],
     "sink": [0, 0],
-    "candidates": [[x1, y1], [x2, y2]],
+    "candidates": [[-50, 0], [50, 0]],
+    "targets": [[0, 75]],
     "mobile_nodes": [
       {
         "name": "node1",
@@ -128,13 +144,14 @@ O editor exporta JSON seguindo o esquema de problema do SimLab:
     ]
   }
 }
-````
+```
 
 ### Observações sobre as expressões de trajetória
 
 * Cada segmento de trajetória é representado de forma paramétrica com `t ∈ [0, 1]`.
 * As expressões podem usar `np.cos`, `np.sin` e `np.pi`.
 * O formato gerado é compatível com o processamento baseado em NumPy utilizado no SimLab.
+* Segmentos importados são preservados como expressões paramétricas customizadas.
 
 ## Tecnologias Utilizadas
 
