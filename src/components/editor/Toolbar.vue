@@ -5,7 +5,7 @@
         v-for="tool in tools"
         :key="tool.id"
         :class="{ active: activeTool === tool.id }"
-        :disabled="tool.id === 'place-candidate' && !candidatesEnabled"
+        :disabled="(tool.id === 'place-candidate' && !candidatesEnabled) || (tool.id === 'place-relay' && !relaysEnabled)"
         :title="tool.label"
         @click="editorStore.setTool(tool.id)"
       >{{ tool.icon }}</button>
@@ -38,12 +38,14 @@ const showJson = computed(() => editorStore.showJsonPreview)
 const showConnectivity = computed(() => editorStore.showConnectivity)
 const candidatesEnabled = computed(() => hasCandidates(problemStore.draft.name))
 const targetsEnabled = computed(() => hasTargets(problemStore.draft.name))
+const relaysEnabled = computed(() => problemStore.draft.name === 'problem1')
 
 const allTools: { id: EditorTool; icon: string; label: string; visibleWhen?: () => boolean }[] = [
   { id: 'select',           icon: '↖',  label: 'Select / Move  [S]' },
   { id: 'place-sink',       icon: '⊕',  label: 'Place Sink  [K]' },
   { id: 'place-candidate',  icon: '●',  label: 'Place Candidate  [C]' },
   { id: 'place-target',     icon: '◇',  label: 'Place Target  [T]', visibleWhen: () => targetsEnabled.value },
+  { id: 'place-relay',      icon: '⧫',  label: 'Place Relay  [N] — problem1 chromosome', visibleWhen: () => relaysEnabled.value },
   { id: 'draw-line',        icon: '╱',  label: 'Draw Polyline  [L] — right-click/Esc to finish' },
   { id: 'draw-ellipse',     icon: '○',  label: 'Draw Ellipse  [E] — drag to define radii' },
   { id: 'measure',          icon: '📏', label: 'Tape Measure  [M] — click-drag to measure distance' },

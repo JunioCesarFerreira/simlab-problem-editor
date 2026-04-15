@@ -30,3 +30,54 @@ export function validateProblem(draft: ProblemDraft): ValidationError[] {
   }
   return errors
 }
+
+export function validateChromosome(draft: ProblemDraft): ValidationError[] {
+  const errors: ValidationError[] = []
+  const chrom = draft.chromosome
+  if (!chrom) return errors
+
+  if (chrom.kind !== draft.name) {
+    errors.push({ field: 'chromosome', message: `Chromosome kind "${chrom.kind}" mismatches problem "${draft.name}"` })
+    return errors
+  }
+
+  const [xmin, ymin, xmax, ymax] = draft.region
+
+  if (chrom.kind === 'problem1') {
+    if (chrom.relays.length > draft.numSensors) {
+      errors.push({ field: 'chromosome.relays', message: `Too many relays: ${chrom.relays.length} > number_of_relays (${draft.numSensors})` })
+    }
+    if (chrom.relays.length < draft.numSensors) {
+      errors.push({ field: 'chromosome.relays', message: `Missing relays: ${chrom.relays.length}/${draft.numSensors}` })
+    }
+    for (const r of chrom.relays) {
+      if (r.x < xmin || r.x > xmax || r.y < ymin || r.y > ymax) {
+        errors.push({ field: 'chromosome.relays', message: `Relay (${r.x},${r.y}) is outside region` })
+      }
+    }
+  }
+
+  if (chrom.kind === 'problem2' || chrom.kind === 'problem3') {
+    if (chrom.mask.length !== draft.candidates.length) {
+      errors.push({ field: 'chromosome.mask', message: `Mask length (${chrom.mask.length}) must equal candidates (${draft.candidates.length})` })
+    }
+    if (chrom.mask.some(b => b !== 0 && b !== 1)) {
+      errors.push({ field: 'chromosome.mask', message: 'Mask entries must be 0 or 1' })
+    }
+  }
+
+  if (chrom.kind === 'problem4') {
+    const n = draft.candidates.length
+    if (chrom.route.some(i => !Number.isInteger(i) || i < 0 || i >= n)) {
+      errors.push({ field: 'chromosome.route', message: `Route indices must be integers in [0, ${n - 1}]` })
+    }
+    if (chrom.sojournTimes.length !== chrom.route.length) {
+      errors.push({ field: 'chromosome.sojourn_times', message: `sojourn_times length (${chrom.sojournTimes.length}) must equal route length (${chrom.route.length})` })
+    }
+    if (chrom.sojournTimes.some(t => !isFinite(t) || t < 0)) {
+      errors.push({ field: 'chromosome.sojourn_times', message: 'sojourn_times must be finite and ≥ 0' })
+    }
+  }
+
+  return errors
+}

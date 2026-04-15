@@ -70,7 +70,7 @@ const ellipseDrag = ref<{ center: [number, number]; current: [number, number] } 
 
 /** Drag-move state for select tool */
 const dragState = ref<{
-  type: 'sink' | 'candidate' | 'target'
+  type: 'sink' | 'candidate' | 'target' | 'relay'
   id?: string
   downCanvas: [number, number]
   originalPos: [number, number]
@@ -280,6 +280,16 @@ function hitTarget(cx: number, cy: number): string | null {
   return null
 }
 
+function hitRelay(cx: number, cy: number): string | null {
+  const chrom = problemStore.draft.chromosome
+  if (!chrom || chrom.kind !== 'problem1') return null
+  for (const r of chrom.relays) {
+    const [px, py] = worldToCanvas(r.x, r.y)
+    if (Math.hypot(cx - px, cy - py) <= HIT_PX) return r.id
+  }
+  return null
+}
+
 // ─── Tool UI helpers ──────────────────────────────────────────────────────────
 
 const canvasCursor = computed(() => {
@@ -291,9 +301,16 @@ const canvasCursor = computed(() => {
   return 'crosshair'
 })
 
-const isToolWarn = computed(() =>
-  ['draw-line', 'draw-ellipse'].includes(editorStore.activeTool) && !editorStore.activeNodeId
-)
+const isToolWarn = computed(() => {
+  const t = editorStore.activeTool
+  if (['draw-line', 'draw-ellipse'].includes(t) && !editorStore.activeNodeId) return true
+  if (t === 'place-relay') {
+    const chrom = problemStore.draft.chromosome
+    const n = (chrom && chrom.kind === 'problem1') ? chrom.relays.length : 0
+    return n >= problemStore.draft.numSensors
+  }
+  return false
+})
 
 const toolHint = computed(() => {
   const t = editorStore.activeTool
@@ -320,6 +337,13 @@ const toolHint = computed(() => {
     if (!scaleCalibrateState.value) return 'Arraste um segmento de comprimento conhecido  [R]  ·  Esc cancela'
     if (!scaleCalibrateState.value.locked) return 'Solte para fixar o segmento  ·  Esc cancela'
     return 'Digite o comprimento real e pressione Enter para recalibrar a escala'
+  }
+  if (t === 'place-relay') {
+    const chrom = problemStore.draft.chromosome
+    const n = (chrom && chrom.kind === 'problem1') ? chrom.relays.length : 0
+    const lim = problemStore.draft.numSensors
+    if (n >= lim) return `⚠ Limite atingido (${n}/${lim}) — ajuste "Number of Sensors"`
+    return `Clique para adicionar relay  [N]  ·  ${n}/${lim}  ·  clique direito para remover`
   }
   const hints: Record<string, string> = {
     'select': 'Clique para selecionar · arraste para mover · Del para remover · clique direito para remover',
@@ -385,9 +409,11 @@ function draw() {
   drawGrid(ctx)
   drawRegionBorder(ctx)
   drawConnectivityGraph(ctx)
+  drawP4Route(ctx)
   drawMobileRoutes(ctx)
   drawTargets(ctx)
   drawCandidates(ctx)
+  drawRelays(ctx)
   drawSink(ctx)
   drawPolylinePreview(ctx)
   drawEllipsePreview(ctx)
@@ -520,17 +546,94 @@ function drawTargets(ctx: CanvasRenderingContext2D) {
 
 function drawCandidates(ctx: CanvasRenderingContext2D) {
   const sel = editorStore.selected
-  for (const c of problemStore.draft.candidates) {
+  const chrom = problemStore.draft.chromosome
+  const hasMask = chrom && (chrom.kind === 'problem2' || chrom.kind === 'problem3')
+  const mask = hasMask ? chrom.mask : null
+  for (let i = 0; i < problemStore.draft.candidates.length; i++) {
+    const c = problemStore.draft.candidates[i]
     const [px, py] = worldToCanvas(c.x, c.y)
     const selected = sel?.type === 'candidate' && sel.id === c.id
+    const active = !!(mask && mask[i] === 1)
     ctx.beginPath()
-    ctx.arc(px, py, selected ? 7 : 5, 0, Math.PI * 2)
-    ctx.fillStyle = '#a6e3a1'
+    ctx.arc(px, py, selected ? 7 : active ? 6 : 5, 0, Math.PI * 2)
+    // Active candidates get the accent fill; inactive stay green.
+    ctx.fillStyle = active ? '#89b4fa' : '#a6e3a1'
     ctx.fill()
-    ctx.strokeStyle = selected ? '#f9e2af' : '#1e1e2e'
-    ctx.lineWidth = selected ? 2.5 : 1
+    ctx.strokeStyle = selected ? '#f9e2af' : active ? '#cdd6f4' : '#1e1e2e'
+    ctx.lineWidth = selected ? 2.5 : active ? 2 : 1
     ctx.stroke()
+    if (active) {
+      // Outer halo ring to make selection visually unambiguous.
+      ctx.beginPath()
+      ctx.arc(px, py, 10, 0, Math.PI * 2)
+      ctx.strokeStyle = '#89b4fa88'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    }
   }
+}
+
+function drawRelays(ctx: CanvasRenderingContext2D) {
+  const chrom = problemStore.draft.chromosome
+  if (!chrom || chrom.kind !== 'problem1') return
+  const sel = editorStore.selected
+  for (const r of chrom.relays) {
+    const [px, py] = worldToCanvas(r.x, r.y)
+    const selected = sel?.type === 'relay' && sel.id === r.id
+    const size = selected ? 7 : 5.5
+    // Diamond + dot so relays are visually distinct from candidates (circle)
+    // and targets (small diamond).
+    ctx.beginPath()
+    ctx.moveTo(px, py - size)
+    ctx.lineTo(px + size, py)
+    ctx.lineTo(px, py + size)
+    ctx.lineTo(px - size, py)
+    ctx.closePath()
+    ctx.fillStyle = '#89b4fa'
+    ctx.fill()
+    ctx.strokeStyle = selected ? '#f9e2af' : '#cdd6f4'
+    ctx.lineWidth = selected ? 2.5 : 1.5
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(px, py, 1.5, 0, Math.PI * 2)
+    ctx.fillStyle = '#1e1e2e'
+    ctx.fill()
+  }
+}
+
+function drawP4Route(ctx: CanvasRenderingContext2D) {
+  const chrom = problemStore.draft.chromosome
+  if (!chrom || chrom.kind !== 'problem4') return
+  const cands = problemStore.draft.candidates
+  const pts: [number, number][] = []
+  for (const idx of chrom.route) {
+    if (idx < 0 || idx >= cands.length) continue
+    const c = cands[idx]
+    pts.push(worldToCanvas(c.x, c.y))
+  }
+  if (pts.length < 1) return
+  ctx.save()
+  ctx.strokeStyle = '#cba6f7'
+  ctx.lineWidth = 2
+  ctx.setLineDash([8, 4])
+  ctx.beginPath()
+  ctx.moveTo(pts[0][0], pts[0][1])
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+  ctx.stroke()
+  ctx.setLineDash([])
+  drawArrowsAlongPath(ctx, pts, '#cba6f7', 2)
+  // Order badges
+  ctx.font = 'bold 10px monospace'
+  ctx.textAlign = 'center'
+  pts.forEach(([x, y], i) => {
+    ctx.fillStyle = '#cba6f7'
+    ctx.beginPath()
+    ctx.arc(x + 10, y - 10, 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#1e1e2e'
+    ctx.fillText(String(i + 1), x + 10, y - 7)
+  })
+  ctx.restore()
 }
 
 function drawSink(ctx: CanvasRenderingContext2D) {
@@ -974,6 +1077,16 @@ function handleMouseDown(e: MouseEvent) {
       dragState.value = { type: 'target', id: tid, downCanvas: [cx, cy], originalPos: [t.x, t.y], moved: false }
       return
     }
+    const rid = hitRelay(cx, cy)
+    if (rid) {
+      const chrom = problemStore.draft.chromosome
+      if (chrom && chrom.kind === 'problem1') {
+        const r = chrom.relays.find(r => r.id === rid)!
+        editorStore.setSelected({ type: 'relay', id: rid })
+        dragState.value = { type: 'relay', id: rid, downCanvas: [cx, cy], originalPos: [r.x, r.y], moved: false }
+        return
+      }
+    }
     editorStore.setSelected(null)
     dragState.value = null
   }
@@ -1018,6 +1131,7 @@ function handleMouseMove(e: MouseEvent) {
       if (ds.type === 'sink') problemStore.setSink({ x: nx, y: ny })
       else if (ds.type === 'candidate' && ds.id) problemStore.moveCandidate(ds.id, nx, ny)
       else if (ds.type === 'target' && ds.id) problemStore.moveTarget(ds.id, nx, ny)
+      else if (ds.type === 'relay' && ds.id) problemStore.moveRelay(ds.id, nx, ny)
     }
   }
 
@@ -1091,6 +1205,9 @@ function handleMouseUp(e: MouseEvent) {
     problemStore.addCandidate(snap(wx), snap(wy))
   } else if (tool === 'place-target' && problemStore.draft.name === 'problem3') {
     problemStore.addTarget(snap(wx), snap(wy))
+  } else if (tool === 'place-relay' && problemStore.draft.name === 'problem1') {
+    // Respect the number_of_relays limit; silently no-op when full.
+    problemStore.addRelay(snap(wx), snap(wy))
   } else if (tool === 'draw-line' && editorStore.activeNodeId) {
     const pt: [number, number] = [snap(wx), snap(wy)]
     const prev = polylinePoints.value
@@ -1142,6 +1259,12 @@ function handleRightClick(e: MouseEvent) {
   if (hitSink(cx, cy)) {
     problemStore.setSink(null)
     editorStore.setSelected(null)
+    return
+  }
+  const rid = hitRelay(cx, cy)
+  if (rid) {
+    problemStore.removeRelay(rid)
+    editorStore.setSelected(null)
   }
 }
 
@@ -1166,18 +1289,20 @@ function handleKey(e: KeyboardEvent) {
     if (sel?.type === 'sink') { problemStore.setSink(null); editorStore.setSelected(null) }
     else if (sel?.type === 'candidate') { problemStore.removeCandidate(sel.id); editorStore.setSelected(null) }
     else if (sel?.type === 'target') { problemStore.removeTarget(sel.id); editorStore.setSelected(null) }
+    else if (sel?.type === 'relay') { problemStore.removeRelay(sel.id); editorStore.setSelected(null) }
     e.preventDefault()
   }
 
   if (!e.ctrlKey && !e.metaKey && !isInputTarget(e)) {
     const map: Record<string, typeof editorStore.activeTool> = {
-      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 't': 'place-target', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
+      's': 'select', 'k': 'place-sink', 'c': 'place-candidate', 't': 'place-target', 'n': 'place-relay', 'l': 'draw-line', 'e': 'draw-ellipse', 'm': 'measure', 'r': 'scale-calibrate',
     }
     const t = map[e.key.toLowerCase()]
     if (t) {
       const name = problemStore.draft.name
       if (t === 'place-candidate' && name === 'problem1') { /* disabled for problem1 */ }
       else if (t === 'place-target' && name !== 'problem3') { /* only for problem3 */ }
+      else if (t === 'place-relay' && name !== 'problem1') { /* only for problem1 */ }
       else {
         editorStore.setTool(t)
         polylinePoints.value = []

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { nanoid } from 'nanoid'
-import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment, Region, TargetPoint } from '../models/problem'
+import type { ProblemDraft, SinkPoint, MobileRouteDraft, DraftSegment, Region, TargetPoint, ChromosomeDraft, MacProtocol, RelayPoint } from '../models/problem'
 export type { ProblemDraft }
 import { saveDraft, loadDraft as loadSavedDraft } from '../services/persistence'
 
@@ -18,7 +18,16 @@ function createDefaultDraft(): ProblemDraft {
     targets: [],
     numSensors: 1,
     mobileNodes: [],
+    chromosome: null,
   }
+}
+
+function createChromosomeFor(name: string, draft: ProblemDraft): ChromosomeDraft | null {
+  if (name === 'problem1') return { kind: 'problem1', macProtocol: 'csma', relays: [] }
+  if (name === 'problem2') return { kind: 'problem2', macProtocol: 'csma', mask: draft.candidates.map(() => 0) }
+  if (name === 'problem3') return { kind: 'problem3', macProtocol: 'csma', mask: draft.candidates.map(() => 0) }
+  if (name === 'problem4') return { kind: 'problem4', macProtocol: 'csma', route: [], sojournTimes: [] }
+  return null
 }
 
 export const useProblemStore = defineStore('problem', () => {
@@ -42,7 +51,12 @@ export const useProblemStore = defineStore('problem', () => {
   }
 
   function updateMeta(fields: Partial<Pick<ProblemDraft, 'name' | 'radiusOfReach' | 'radiusOfInter' | 'radiusOfCover' | 'kRequired' | 'region' | 'numSensors'>>) {
+    const nameChanging = fields.name && fields.name !== draft.value.name
     Object.assign(draft.value, fields)
+    if (nameChanging) {
+      // Chromosome shape is incompatible across problem types; drop it.
+      draft.value.chromosome = null
+    }
   }
 
   function setSink(sink: SinkPoint | null) {
@@ -51,10 +65,31 @@ export const useProblemStore = defineStore('problem', () => {
 
   function addCandidate(x: number, y: number) {
     draft.value.candidates.push({ id: nanoid(), x, y })
+    const chrom = draft.value.chromosome
+    if (chrom && (chrom.kind === 'problem2' || chrom.kind === 'problem3')) {
+      chrom.mask.push(0)
+    }
   }
 
   function removeCandidate(id: string) {
-    draft.value.candidates = draft.value.candidates.filter(c => c.id !== id)
+    const idx = draft.value.candidates.findIndex(c => c.id === id)
+    if (idx < 0) return
+    draft.value.candidates.splice(idx, 1)
+    const chrom = draft.value.chromosome
+    if (chrom && (chrom.kind === 'problem2' || chrom.kind === 'problem3')) {
+      chrom.mask.splice(idx, 1)
+    } else if (chrom && chrom.kind === 'problem4') {
+      // Drop references to the removed index and decrement higher indices.
+      const keep: number[] = []
+      const keepT: number[] = []
+      chrom.route.forEach((r, i) => {
+        if (r === idx) return
+        keep.push(r > idx ? r - 1 : r)
+        keepT.push(chrom.sojournTimes[i] ?? 0)
+      })
+      chrom.route = keep
+      chrom.sojournTimes = keepT
+    }
   }
 
   function moveCandidate(id: string, x: number, y: number) {
@@ -144,6 +179,78 @@ export const useProblemStore = defineStore('problem', () => {
     console.log('[rescaleAll] new region', draft.value.region)
   }
 
+  // ── Chromosome mutations ────────────────────────────────────────────────────
+
+  function ensureChromosome() {
+    if (!draft.value.chromosome) {
+      draft.value.chromosome = createChromosomeFor(draft.value.name, draft.value)
+    }
+  }
+
+  function clearChromosome() {
+    draft.value.chromosome = null
+  }
+
+  function setMacProtocol(mac: MacProtocol) {
+    ensureChromosome()
+    if (draft.value.chromosome) draft.value.chromosome.macProtocol = mac
+  }
+
+  function setMaskAt(index: number, value: 0 | 1) {
+    const chrom = draft.value.chromosome
+    if (!chrom || (chrom.kind !== 'problem2' && chrom.kind !== 'problem3')) return
+    if (index < 0 || index >= chrom.mask.length) return
+    chrom.mask[index] = value
+  }
+
+  function toggleMaskAt(index: number) {
+    const chrom = draft.value.chromosome
+    if (!chrom || (chrom.kind !== 'problem2' && chrom.kind !== 'problem3')) return
+    if (index < 0 || index >= chrom.mask.length) return
+    chrom.mask[index] = chrom.mask[index] ? 0 : 1
+  }
+
+  function addRelay(x: number, y: number): string | null {
+    ensureChromosome()
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem1') return null
+    if (chrom.relays.length >= draft.value.numSensors) return null
+    const relay: RelayPoint = { id: nanoid(), x, y }
+    chrom.relays.push(relay)
+    return relay.id
+  }
+
+  function moveRelay(id: string, x: number, y: number) {
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem1') return
+    const r = chrom.relays.find(r => r.id === id)
+    if (r) { r.x = x; r.y = y }
+  }
+
+  function removeRelay(id: string) {
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem1') return
+    chrom.relays = chrom.relays.filter(r => r.id !== id)
+  }
+
+  function setRoute(route: number[]) {
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem4') return
+    chrom.route = route
+    // Keep sojournTimes aligned: truncate or pad with 0.
+    if (chrom.sojournTimes.length > route.length) {
+      chrom.sojournTimes.length = route.length
+    } else {
+      while (chrom.sojournTimes.length < route.length) chrom.sojournTimes.push(0)
+    }
+  }
+
+  function setSojournTimes(times: number[]) {
+    const chrom = draft.value.chromosome
+    if (!chrom || chrom.kind !== 'problem4') return
+    chrom.sojournTimes = times
+  }
+
   return {
     draft,
     reset,
@@ -163,5 +270,15 @@ export const useProblemStore = defineStore('problem', () => {
     removeSegmentFromNode,
     removeLastSegmentFromNode,
     rescaleAll,
+    ensureChromosome,
+    clearChromosome,
+    setMacProtocol,
+    setMaskAt,
+    toggleMaskAt,
+    addRelay,
+    moveRelay,
+    removeRelay,
+    setRoute,
+    setSojournTimes,
   }
 })

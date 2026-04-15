@@ -3,6 +3,7 @@
     <div class="tabs">
       <button :class="{ active: tab === 'problem' }" @click="tab = 'problem'">Problem</button>
       <button :class="{ active: tab === 'nodes' }" @click="tab = 'nodes'">Nodes</button>
+      <button :class="{ active: tab === 'chromosome' }" @click="tab = 'chromosome'">Chromosome</button>
     </div>
     <div class="tab-content">
       <template v-if="tab === 'problem'">
@@ -17,10 +18,13 @@
         </template>
         <CalibrationPanel />
       </template>
-      <template v-else>
+      <template v-else-if="tab === 'nodes'">
         <MobileNodeList />
         <div class="divider" />
         <MobileNodeEditor />
+      </template>
+      <template v-else>
+        <ChromosomePanel />
       </template>
     </div>
   </div>
@@ -34,10 +38,11 @@ import CandidateList from '../problem/CandidateList.vue'
 import TargetList from '../problem/TargetList.vue'
 import MobileNodeList from '../problem/MobileNodeList.vue'
 import MobileNodeEditor from '../problem/MobileNodeEditor.vue'
+import ChromosomePanel from '../problem/ChromosomePanel.vue'
 import { useProblemStore } from '../../stores/problemStore'
 import { hasCandidates, hasTargets } from '../../models/problem'
 
-const tab = ref<'problem' | 'nodes'>('problem')
+const tab = ref<'problem' | 'nodes' | 'chromosome'>('problem')
 const problemStore = useProblemStore()
 const showCandidates = computed(() => hasCandidates(problemStore.draft.name))
 const showTargets = computed(() => hasTargets(problemStore.draft.name))

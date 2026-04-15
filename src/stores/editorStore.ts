@@ -1,12 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'place-target' | 'draw-line' | 'draw-ellipse' | 'measure' | 'scale-calibrate'
+export type EditorTool = 'select' | 'place-sink' | 'place-candidate' | 'place-target' | 'place-relay' | 'draw-line' | 'draw-ellipse' | 'measure' | 'scale-calibrate'
 
 export type SelectedElement =
   | { type: 'sink' }
   | { type: 'candidate'; id: string }
   | { type: 'target'; id: string }
+  | { type: 'relay'; id: string }
 
 export const useEditorStore = defineStore('editor', () => {
   const activeTool = ref<EditorTool>('select')

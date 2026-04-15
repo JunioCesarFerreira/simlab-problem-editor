@@ -55,6 +55,7 @@ export function importProblemJson(json: string): ImportResult {
       isRoundTrip: m.is_round_trip,
       segments: (m.path_segments ?? []).map(parseSegment),
     })),
+    chromosome: null,
   }
 
   return { ok: true, draft }

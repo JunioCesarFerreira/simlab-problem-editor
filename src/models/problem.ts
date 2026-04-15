@@ -56,6 +56,75 @@ export type ProblemDraft = {
   targets: TargetPoint[]
   numSensors: number
   mobileNodes: MobileRouteDraft[]
+  chromosome: ChromosomeDraft | null
+}
+
+// ── Chromosome (solution) drafts ──────────────────────────────────────────────
+// Internal representation uses human-readable MAC label; conversion to the
+// 0|1 gene expected by mo-engine happens only at export time.
+export type MacProtocol = 'csma' | 'tsch'
+
+export type RelayPoint = {
+  id: string
+  x: number
+  y: number
+}
+
+export type ChromosomeP1Draft = {
+  kind: 'problem1'
+  macProtocol: MacProtocol
+  relays: RelayPoint[]
+}
+
+export type ChromosomeP2Draft = {
+  kind: 'problem2'
+  macProtocol: MacProtocol
+  /** Aligned to draft.candidates (same length, same order). */
+  mask: number[]
+}
+
+export type ChromosomeP3Draft = {
+  kind: 'problem3'
+  macProtocol: MacProtocol
+  /** Aligned to draft.candidates (same length, same order). */
+  mask: number[]
+}
+
+export type ChromosomeP4Draft = {
+  kind: 'problem4'
+  macProtocol: MacProtocol
+  /** Indices into draft.candidates. */
+  route: number[]
+  /** Same length as route. */
+  sojournTimes: number[]
+}
+
+export type ChromosomeDraft =
+  | ChromosomeP1Draft
+  | ChromosomeP2Draft
+  | ChromosomeP3Draft
+  | ChromosomeP4Draft
+
+// Exported (mo-engine) shape: camelCase → snake_case, MacProtocol → 0|1.
+export type ExportedChromosomeP1 = {
+  mac_protocol: 0 | 1
+  relays: Array<{ x: number; y: number }>
+}
+export type ExportedChromosomeP2 = { mac_protocol: 0 | 1; mask: number[] }
+export type ExportedChromosomeP3 = { mac_protocol: 0 | 1; mask: number[] }
+export type ExportedChromosomeP4 = {
+  mac_protocol: 0 | 1
+  route: number[]
+  sojourn_times: number[]
+}
+
+export type ExportedChromosomeFile = {
+  problem_name: ProblemName
+  chromosome:
+    | ExportedChromosomeP1
+    | ExportedChromosomeP2
+    | ExportedChromosomeP3
+    | ExportedChromosomeP4
 }
 
 // Exported types (JSON output)
