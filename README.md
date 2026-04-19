@@ -10,7 +10,7 @@ Visual editor for authoring Wireless Sensor Network (WSN) problem instances comp
 
 **simlab-problem-editor** is a browser-based visual editor built with **Vue 3**, **TypeScript**, and **Pinia** for creating WSN problem instances in the JSON format expected by **SimLab**.
 
-The tool was designed to simplify the definition of spatial network scenarios by replacing manual JSON authoring with an interactive canvas workflow. Instead of editing coordinates and trajectory expressions by hand, you can use a reference image, define the region of interest, place the sink and candidate nodes, draw mobile node paths, and export a problem instance directly.
+The tool was designed to simplify the definition of spatial network scenarios by replacing manual JSON authoring with an interactive canvas workflow. Instead of editing coordinates and trajectory expressions by hand, you can use a reference image, define the region of interest, place the sink and candidate nodes, draw mobile node paths, author solution chromosomes, and export JSON artifacts directly.
 
 This is particularly useful for scenarios in which the spatial structure matters, such as synthetic urban layouts, industrial monitoring areas, or mobility-aware communication experiments.
 
@@ -21,13 +21,14 @@ With **simlab-problem-editor**, you can:
 - load a background image as a spatial reference
 - calibrate the canvas scale to real-world coordinates
 - define the problem region
-- place the sink node
+- place and manually edit the sink node position
 - place and edit candidate fixed-node positions
 - place and edit target points for coverage-oriented instances
 - design mobile-node trajectories visually
-- inspect communication reach through a connectivity overlay
+- author and export solution chromosomes for `problem1` through `problem4`
+- inspect communication reach through problem-wide and chromosome-aware connectivity overlays
 - measure distances directly on the scene
-- export the final instance as SimLab-compatible JSON
+- export problem instances and chromosome solutions as SimLab-compatible JSON
 
 The exported output is intended to be consumed by SimLab’s optimization and simulation components.
 
@@ -43,7 +44,7 @@ The exported output is intended to be consumed by SimLab’s optimization and si
   Specify the scenario bounding box in the form `[xmin, ymin, xmax, ymax]`.
 
 - **Sink placement**  
-  Insert exactly one sink node in the problem instance.
+  Insert exactly one sink node in the problem instance and edit its coordinates manually for `problem1`, `problem2`, and `problem3`.
 
 - **Candidate-node placement**  
   Add, move, and remove candidate positions for fixed communication nodes.
@@ -62,6 +63,15 @@ The exported output is intended to be consumed by SimLab’s optimization and si
 - **Connectivity graph visualization**  
   Display edges between nodes that fall within the communication radius.
 
+- **Chromosome authoring**  
+  Create solution chromosomes with:
+  - `problem1`: relay coordinates and MAC protocol
+  - `problem2` / `problem3`: candidate activation mask and MAC protocol
+  - `problem4`: candidate route, sojourn times, and MAC protocol
+
+- **Chromosome-aware connectivity overlay**  
+  Inspect reachability using only the nodes deployed by the current chromosome.
+
 - **Measurement tool**  
   Measure distances in calibrated world units directly on the canvas.
 
@@ -69,7 +79,7 @@ The exported output is intended to be consumed by SimLab’s optimization and si
   Inspect the generated instance in real time while editing.
 
 - **JSON export**  
-  Produce a valid `{ "problem": { ... } }` object ready to be used in SimLab workflows.
+  Produce a valid `{ "problem": { ... } }` object and, when needed, a separate chromosome JSON object ready to be used in SimLab workflows.
 
 ## Typical Workflow
 
@@ -80,8 +90,9 @@ The exported output is intended to be consumed by SimLab’s optimization and si
 5. Add candidate fixed-node positions.
 6. Add target points when using a coverage-oriented problem type.
 7. Draw mobile-node trajectories.
-8. Inspect connectivity and distances.
-9. Export the generated JSON instance.
+8. Create a chromosome in the **Chromosome** tab when you want to define a solution.
+9. Inspect connectivity, chromosome connectivity, and distances.
+10. Export the generated problem JSON and chromosome JSON.
 
 This workflow makes it easier to construct reproducible WSN scenarios without manually deriving coordinates and path expressions.
 
@@ -93,11 +104,14 @@ This workflow makes it easier to construct reproducible WSN scenarios without ma
 | `K` | Place sink |
 | `C` | Place candidate |
 | `T` | Place target (`problem3`) |
+| `N` | Place relay for a `problem1` chromosome |
+| `X` | Pick chromosome nodes: toggle mask for `problem2` / `problem3`, append route stop for `problem4` |
 | `L` | Draw line / polyline segment |
 | `E` | Draw ellipse |
 | `M` | Measure distance |
 | `R` | Calibrate scale |
 | `G` | Toggle connectivity graph |
+| `H` | Toggle chromosome connectivity graph |
 | `Del` | Remove selected element |
 | `Esc` | Cancel current drawing |
 
@@ -153,6 +167,32 @@ Example:
 * The generated format is compatible with NumPy-based processing used in SimLab.
 * Imported path segments are preserved as custom parametric expressions.
 
+## Chromosome Output
+
+Chromosomes are exported separately from problem instances. The output contains the selected `problem_name` and a `chromosome` object whose shape depends on the problem type:
+
+| Problem type | Chromosome fields |
+| ------------ | ----------------- |
+| `problem1` | `mac_protocol`, `relays` |
+| `problem2` | `mac_protocol`, `mask` |
+| `problem3` | `mac_protocol`, `mask` |
+| `problem4` | `mac_protocol`, `route`, `sojourn_times` |
+
+`mac_protocol` is exported as `0` for CSMA/CA and `1` for TSCH.
+
+Example:
+
+```json
+{
+  "problem_name": "problem4",
+  "chromosome": {
+    "mac_protocol": 1,
+    "route": [0, 2, 1],
+    "sojourn_times": [10, 5, 12]
+  }
+}
+```
+
 ## Technology Stack
 
 | Layer            | Technology              |
@@ -194,6 +234,11 @@ src/
       Toolbar.vue            # Tool buttons and editor actions
       PropertiesPanel.vue    # Editable properties of the selected element
       JsonPreviewPanel.vue   # Live JSON visualization
+    problem/
+      ChromosomePanel.vue    # Chromosome editor dispatcher
+      ChromosomeP1Panel.vue  # Relay-based chromosome editor
+      ChromosomeMaskPanel.vue # Mask-based chromosome editor for problem2/problem3
+      ChromosomeP4Panel.vue  # Route and sojourn-time chromosome editor
   stores/
     problemStore.ts          # Problem model state and export logic
     editorStore.ts           # UI state, active tool, viewport, overlays
@@ -201,6 +246,8 @@ src/
     problem.ts               # Domain types and interfaces
   services/
     exportProblemJson.ts     # Conversion from editor state to SimLab JSON
+    exportChromosomeJson.ts  # Conversion from chromosome draft to SimLab chromosome JSON
+    importProblemJson.ts     # Import of existing problem JSON
 ```
 
 ## Use Cases

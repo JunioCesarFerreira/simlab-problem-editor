@@ -45,7 +45,26 @@
       </div>
       <span v-if="hasError('region')" class="err-msg">{{ errorFor('region') }}</span>
     </fieldset>
-    <div v-if="hasError('sink')" class="sink-warn">⚠ {{ errorFor('sink') }}</div>
+    <fieldset v-if="canEditSink" :class="{ error: hasError('sink') }">
+      <legend>Sink</legend>
+      <div class="region-row">
+        <span class="axis-label">XY</span>
+        <input
+          type="number"
+          :value="sinkX"
+          placeholder="x"
+          @change="updateSink('x', +($event.target as HTMLInputElement).value)"
+        />
+        <input
+          type="number"
+          :value="sinkY"
+          placeholder="y"
+          @change="updateSink('y', +($event.target as HTMLInputElement).value)"
+        />
+      </div>
+      <span v-if="hasError('sink')" class="err-msg">{{ errorFor('sink') }}</span>
+    </fieldset>
+    <div v-else-if="hasError('sink')" class="sink-warn">⚠ {{ errorFor('sink') }}</div>
     <button class="danger" @click="problemStore.reset()">Reset Problem</button>
   </div>
 </template>
@@ -88,6 +107,26 @@ const region = computed({
   get: () => problemStore.draft.region,
   set: v => problemStore.updateMeta({ region: v as Region }),
 })
+const canEditSink = computed(() => ['problem1', 'problem2', 'problem3'].includes(problemStore.draft.name))
+const sinkX = computed(() => problemStore.draft.sink?.x ?? '')
+const sinkY = computed(() => problemStore.draft.sink?.y ?? '')
+
+function regionCenter(): { x: number; y: number } {
+  const [xmin, ymin, xmax, ymax] = problemStore.draft.region
+  return {
+    x: Math.round((xmin + xmax) / 2),
+    y: Math.round((ymin + ymax) / 2),
+  }
+}
+
+function updateSink(axis: 'x' | 'y', value: number) {
+  if (!isFinite(value)) return
+  const current = problemStore.draft.sink ?? regionCenter()
+  problemStore.setSink({
+    x: axis === 'x' ? value : current.x,
+    y: axis === 'y' ? value : current.y,
+  })
+}
 </script>
 
 <style scoped>
