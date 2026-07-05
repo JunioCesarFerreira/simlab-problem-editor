@@ -81,6 +81,12 @@ The exported output is intended to be consumed by SimLab’s optimization and si
 - **JSON export**  
   Produce a valid `{ "problem": { ... } }` object and, when needed, a separate chromosome JSON object ready to be used in SimLab workflows.
 
+- **JSON import**  
+  Paste or open an existing `problem.json` file to resume editing a previously exported instance.
+
+- **Local autosave**  
+  The current draft is automatically saved to the browser's local storage and restored the next time the editor is opened.
+
 ## Typical Workflow
 
 1. Load a reference image.
@@ -227,27 +233,46 @@ npm run build
 
 ```text
 src/
+  App.vue                    # Application shell
+  main.ts                    # Entry point
   components/
     editor/
       ProblemEditor.vue      # Root editor layout
       CanvasView.vue         # Canvas rendering and interaction logic
       Toolbar.vue            # Tool buttons and editor actions
       PropertiesPanel.vue    # Editable properties of the selected element
+      CalibrationPanel.vue   # Image scale calibration controls
+      ImportPanel.vue        # JSON import (paste or file) panel
       JsonPreviewPanel.vue   # Live JSON visualization
     problem/
+      ProblemForm.vue        # Problem-level fields (name, radii, region, sink)
+      CandidateList.vue      # Candidate fixed-node list editor
+      TargetList.vue         # Target-point list editor (problem3)
+      MobileNodeList.vue     # Mobile-node list editor
+      MobileNodeEditor.vue   # Single mobile-node properties editor
+      SegmentEditor.vue      # Trajectory segment (line/ellipse) editor
       ChromosomePanel.vue    # Chromosome editor dispatcher
       ChromosomeP1Panel.vue  # Relay-based chromosome editor
       ChromosomeMaskPanel.vue # Mask-based chromosome editor for problem2/problem3
       ChromosomeP4Panel.vue  # Route and sojourn-time chromosome editor
+      MacProtocolField.vue   # MAC protocol selector shared by chromosome panels
+  composables/
+    useValidation.ts         # Reactive validation-error lookup for form fields
   stores/
-    problemStore.ts          # Problem model state and export logic
+    problemStore.ts          # Problem model state, autosave, and export logic
     editorStore.ts           # UI state, active tool, viewport, overlays
   models/
-    problem.ts               # Domain types and interfaces
+    problem.ts                    # Domain types and interfaces
   services/
-    exportProblemJson.ts     # Conversion from editor state to SimLab JSON
-    exportChromosomeJson.ts  # Conversion from chromosome draft to SimLab chromosome JSON
-    importProblemJson.ts     # Import of existing problem JSON
+    coordinateTransform.ts        # Pixel <-> world coordinate calibration
+    expressionEvaluator.ts        # Parametric expression evaluation (t in [0, 1])
+    segmentExpressionBuilder.ts   # Trajectory segments -> parametric expressions
+    exportProblemJson.ts          # Conversion from editor state to SimLab JSON
+    exportChromosomeJson.ts       # Conversion from chromosome draft to SimLab chromosome JSON
+    importProblemJson.ts          # Import of existing problem JSON
+    importChromosomeJson.ts       # Import of existing chromosome JSON
+    validators.ts                 # Problem and chromosome validation rules
+    persistence.ts                # Local-storage draft autosave/restore
 ```
 
 ## Use Cases
@@ -269,3 +294,7 @@ This editor is useful for:
 ## License
 
 This project is licensed under the **MIT License**.
+
+## Project Status
+
+⚠️ **This repository is discontinued.** Its functionality has been fully integrated into the main [SimLab](https://github.com/JunioCesarFerreira/simlab) pipeline. It is kept public for historical and reference purposes only and will no longer receive updates.

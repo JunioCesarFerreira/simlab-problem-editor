@@ -81,6 +81,12 @@ A saída exportada foi pensada para ser consumida pelos componentes de otimizaç
 - **Exportação para JSON**  
   Gere um objeto válido no formato `{ "problem": { ... } }` e, quando necessário, um objeto JSON separado para o cromossomo, prontos para uso em fluxos do SimLab.
 
+- **Importação de JSON**  
+  Cole ou abra um arquivo `problem.json` existente para retomar a edição de uma instância exportada anteriormente.
+
+- **Salvamento automático local**  
+  O rascunho atual é salvo automaticamente no armazenamento local do navegador e restaurado na próxima vez que o editor for aberto.
+
 ## Fluxo típico de uso
 
 1. Carregue uma imagem de referência.
@@ -227,27 +233,46 @@ npm run build
 
 ```text
 src/
+  App.vue                    # Shell da aplicação
+  main.ts                    # Ponto de entrada
   components/
     editor/
       ProblemEditor.vue      # Layout principal do editor
       CanvasView.vue         # Renderização do canvas e lógica de interação
       Toolbar.vue            # Botões de ferramentas e ações do editor
       PropertiesPanel.vue    # Propriedades editáveis do elemento selecionado
+      CalibrationPanel.vue   # Controles de calibração de escala da imagem
+      ImportPanel.vue        # Painel de importação de JSON (colar ou arquivo)
       JsonPreviewPanel.vue   # Visualização JSON em tempo real
     problem/
+      ProblemForm.vue        # Campos do problema (nome, raios, região, sink)
+      CandidateList.vue      # Editor da lista de nós candidatos
+      TargetList.vue         # Editor da lista de alvos (problem3)
+      MobileNodeList.vue     # Editor da lista de nós móveis
+      MobileNodeEditor.vue   # Editor das propriedades de um nó móvel
+      SegmentEditor.vue      # Editor de segmentos de trajetória (linha/elipse)
       ChromosomePanel.vue    # Dispatcher do editor de cromossomos
       ChromosomeP1Panel.vue  # Editor de cromossomo baseado em relays
       ChromosomeMaskPanel.vue # Editor de máscara para problem2/problem3
       ChromosomeP4Panel.vue  # Editor de rota e tempos de permanência
+      MacProtocolField.vue   # Seletor de protocolo MAC compartilhado pelos painéis
+  composables/
+    useValidation.ts         # Consulta reativa de erros de validação dos campos
   stores/
-    problemStore.ts          # Estado do modelo do problema e lógica de exportação
+    problemStore.ts          # Estado do modelo do problema, autosave e exportação
     editorStore.ts           # Estado da interface, ferramenta ativa, viewport e overlays
   models/
-    problem.ts               # Tipos e interfaces de domínio
+    problem.ts                    # Tipos e interfaces de domínio
   services/
-    exportProblemJson.ts     # Conversão do estado do editor para JSON do SimLab
-    exportChromosomeJson.ts  # Conversão do cromossomo para JSON do SimLab
-    importProblemJson.ts     # Importação de JSON de problema existente
+    coordinateTransform.ts        # Calibração de coordenadas pixel <-> mundo real
+    expressionEvaluator.ts        # Avaliação de expressões paramétricas (t em [0, 1])
+    segmentExpressionBuilder.ts   # Conversão de segmentos em expressões paramétricas
+    exportProblemJson.ts          # Conversão do estado do editor para JSON do SimLab
+    exportChromosomeJson.ts       # Conversão do cromossomo para JSON do SimLab
+    importProblemJson.ts          # Importação de JSON de problema existente
+    importChromosomeJson.ts       # Importação de JSON de cromossomo existente
+    validators.ts                 # Regras de validação do problema e do cromossomo
+    persistence.ts                # Autosave/restauração local do rascunho
 ```
 
 ## Casos de Uso
@@ -269,3 +294,7 @@ Este editor é útil para:
 ## Licença
 
 Este projeto está licenciado sob a **MIT License**.
+
+## Status do Projeto
+
+⚠️ **Este repositório está descontinuado.** Suas funcionalidades foram totalmente integradas ao pipeline principal do [SimLab](https://github.com/JunioCesarFerreira/simlab). Ele permanece público apenas para fins históricos e de referência, e não receberá mais atualizações.
